@@ -1,0 +1,1092 @@
+<?xml version="1.0"?>
+<sdf version="1.9">
+
+  <world name="s1_world">
+
+    <physics name="physics" type="ignored">
+      <max_step_size>0.001</max_step_size>
+      <real_time_factor>1.0</real_time_factor>
+    </physics>
+
+    <plugin
+      filename="gz-sim-physics-system"
+      name="gz::sim::systems::Physics">
+    </plugin>
+
+    <plugin
+      filename="gz-sim-user-commands-system"
+      name="gz::sim::systems::UserCommands">
+    </plugin>
+
+    <plugin
+      filename="gz-sim-scene-broadcaster-system"
+      name="gz::sim::systems::SceneBroadcaster">
+    </plugin>
+
+    <plugin
+      filename="gz-sim-sensors-system"
+      name="gz::sim::systems::Sensors">
+      <render_engine>ogre2</render_engine>
+    </plugin>
+
+
+    <!-- LIGHT -->
+
+    <light type="directional" name="sun">
+      <pose>0 0 10 0 0 0</pose>
+      <diffuse>0.8 0.8 0.8 1</diffuse>
+      <specular>0.2 0.2 0.2 1</specular>
+      <direction>-0.5 0.1 -0.9</direction>
+    </light>
+
+
+    <!-- GROUND -->
+
+    <model name="ground">
+      <static>true</static>
+
+      <link name="ground_link">
+
+        <collision name="collision">
+          <geometry>
+            <plane>
+              <normal>0 0 1</normal>
+              <size>30 30</size>
+            </plane>
+          </geometry>
+        </collision>
+
+        <visual name="visual">
+          <geometry>
+            <plane>
+              <normal>0 0 1</normal>
+              <size>30 30</size>
+            </plane>
+          </geometry>
+
+          <material>
+            <ambient>0.5 0.5 0.5 1</ambient>
+            <diffuse>0.5 0.5 0.5 1</diffuse>
+          </material>
+        </visual>
+
+      </link>
+    </model>
+
+
+    <!-- ROBOT -->
+
+    <model name="robot">
+
+      <pose>0 0 0.125 0 0 0</pose>
+
+      <link name="base_link">
+
+        <gravity>false</gravity>
+
+        <inertial>
+          <mass>5.0</mass>
+
+          <inertia>
+            <ixx>0.2</ixx>
+            <iyy>0.2</iyy>
+            <izz>0.2</izz>
+            <ixy>0</ixy>
+            <ixz>0</ixz>
+            <iyz>0</iyz>
+          </inertia>
+        </inertial>
+
+        <collision name="collision">
+          <geometry>
+            <box>
+              <size>0.25 0.25 0.25</size>
+            </box>
+          </geometry>
+        </collision>
+
+        <visual name="visual">
+          <geometry>
+            <box>
+              <size>0.25 0.25 0.25</size>
+            </box>
+          </geometry>
+
+          <material>
+            <ambient>0.1 0.3 0.9 1</ambient>
+            <diffuse>0.1 0.3 0.9 1</diffuse>
+          </material>
+        </visual>
+
+
+        <!-- LIDAR -->
+
+        <sensor name="lidar" type="gpu_lidar">
+
+          <pose>0 0 0.30 0 0 0</pose>
+
+          <topic>/scan</topic>
+
+          <update_rate>10</update_rate>
+
+          <ray>
+            <scan>
+              <horizontal>
+                <samples>720</samples>
+                <resolution>1</resolution>
+
+                <min_angle>-3.14159265</min_angle>
+                <max_angle>3.14159265</max_angle>
+              </horizontal>
+
+              <vertical>
+                <samples>1</samples>
+                <resolution>1</resolution>
+                <min_angle>0</min_angle>
+                <max_angle>0</max_angle>
+              </vertical>
+            </scan>
+
+            <range>
+              <min>0.10</min>
+              <max>12.0</max>
+              <resolution>0.01</resolution>
+            </range>
+          </ray>
+
+          <always_on>true</always_on>
+
+          <visualize>true</visualize>
+
+        </sensor>
+
+      </link>
+
+      <plugin
+        filename="gz-sim-velocity-control-system"
+        name="gz::sim::systems::VelocityControl">
+
+        <topic>/model/robot/cmd_vel</topic>
+
+      </plugin>
+
+      <plugin
+        filename="gz-sim-odometry-publisher-system"
+        name="gz::sim::systems::OdometryPublisher">
+
+        <odom_frame>odom</odom_frame>
+        <robot_base_frame>base_link</robot_base_frame>
+
+        <odom_publish_frequency>30</odom_publish_frequency>
+
+        <odom_topic>/model/robot/odometry</odom_topic>
+
+      </plugin>
+
+    </model>
+
+
+  
+    <model name="rock_0">
+      <static>true</static>
+      <pose>9.1605 -9.2256 0 0 0 0</pose>
+      <link name="link">
+
+        <collision name="collision">
+          <geometry>
+            <sphere>
+              <radius>0.7253</radius>
+            </sphere>
+          </geometry>
+        </collision>
+
+        <visual name="visual">
+          <geometry>
+            <sphere>
+              <radius>0.7253</radius>
+            </sphere>
+          </geometry>
+
+          <material>
+            <ambient>0.30 0.22 0.15 1</ambient>
+            <diffuse>0.35 0.27 0.18 1</diffuse>
+          </material>
+        </visual>
+
+      </link>
+    </model>
+
+
+    <model name="rock_1">
+      <static>true</static>
+      <pose>-5.4416 -0.2707 0 0 0 0</pose>
+      <link name="link">
+
+        <collision name="collision">
+          <geometry>
+            <sphere>
+              <radius>0.5511</radius>
+            </sphere>
+          </geometry>
+        </collision>
+
+        <visual name="visual">
+          <geometry>
+            <sphere>
+              <radius>0.5511</radius>
+            </sphere>
+          </geometry>
+
+          <material>
+            <ambient>0.30 0.22 0.15 1</ambient>
+            <diffuse>0.35 0.27 0.18 1</diffuse>
+          </material>
+        </visual>
+
+      </link>
+    </model>
+
+
+    <model name="rock_2">
+      <static>true</static>
+      <pose>1.8954 -7.1321 0 0 0 0</pose>
+      <link name="link">
+
+        <collision name="collision">
+          <geometry>
+            <sphere>
+              <radius>0.6268</radius>
+            </sphere>
+          </geometry>
+        </collision>
+
+        <visual name="visual">
+          <geometry>
+            <sphere>
+              <radius>0.6268</radius>
+            </sphere>
+          </geometry>
+
+          <material>
+            <ambient>0.30 0.22 0.15 1</ambient>
+            <diffuse>0.35 0.27 0.18 1</diffuse>
+          </material>
+        </visual>
+
+      </link>
+    </model>
+
+
+    <model name="rock_3">
+      <static>true</static>
+      <pose>0.3677 5.1871 0 0 0 0</pose>
+      <link name="link">
+
+        <collision name="collision">
+          <geometry>
+            <sphere>
+              <radius>0.5827</radius>
+            </sphere>
+          </geometry>
+        </collision>
+
+        <visual name="visual">
+          <geometry>
+            <sphere>
+              <radius>0.5827</radius>
+            </sphere>
+          </geometry>
+
+          <material>
+            <ambient>0.30 0.22 0.15 1</ambient>
+            <diffuse>0.35 0.27 0.18 1</diffuse>
+          </material>
+        </visual>
+
+      </link>
+    </model>
+
+
+    <model name="rock_4">
+      <static>true</static>
+      <pose>-2.5048 6.4603 0 0 0 0</pose>
+      <link name="link">
+
+        <collision name="collision">
+          <geometry>
+            <sphere>
+              <radius>0.5350</radius>
+            </sphere>
+          </geometry>
+        </collision>
+
+        <visual name="visual">
+          <geometry>
+            <sphere>
+              <radius>0.5350</radius>
+            </sphere>
+          </geometry>
+
+          <material>
+            <ambient>0.30 0.22 0.15 1</ambient>
+            <diffuse>0.35 0.27 0.18 1</diffuse>
+          </material>
+        </visual>
+
+      </link>
+    </model>
+
+
+    <model name="rock_5">
+      <static>true</static>
+      <pose>-1.0774 7.1010 0 0 0 0</pose>
+      <link name="link">
+
+        <collision name="collision">
+          <geometry>
+            <sphere>
+              <radius>0.5339</radius>
+            </sphere>
+          </geometry>
+        </collision>
+
+        <visual name="visual">
+          <geometry>
+            <sphere>
+              <radius>0.5339</radius>
+            </sphere>
+          </geometry>
+
+          <material>
+            <ambient>0.30 0.22 0.15 1</ambient>
+            <diffuse>0.35 0.27 0.18 1</diffuse>
+          </material>
+        </visual>
+
+      </link>
+    </model>
+
+
+    <model name="rock_6">
+      <static>true</static>
+      <pose>4.0479 6.7540 0 0 0 0</pose>
+      <link name="link">
+
+        <collision name="collision">
+          <geometry>
+            <sphere>
+              <radius>0.7291</radius>
+            </sphere>
+          </geometry>
+        </collision>
+
+        <visual name="visual">
+          <geometry>
+            <sphere>
+              <radius>0.7291</radius>
+            </sphere>
+          </geometry>
+
+          <material>
+            <ambient>0.30 0.22 0.15 1</ambient>
+            <diffuse>0.35 0.27 0.18 1</diffuse>
+          </material>
+        </visual>
+
+      </link>
+    </model>
+
+
+    <model name="rock_7">
+      <static>true</static>
+      <pose>0.1326 -3.3951 0 0 0 0</pose>
+      <link name="link">
+
+        <collision name="collision">
+          <geometry>
+            <sphere>
+              <radius>0.6906</radius>
+            </sphere>
+          </geometry>
+        </collision>
+
+        <visual name="visual">
+          <geometry>
+            <sphere>
+              <radius>0.6906</radius>
+            </sphere>
+          </geometry>
+
+          <material>
+            <ambient>0.30 0.22 0.15 1</ambient>
+            <diffuse>0.35 0.27 0.18 1</diffuse>
+          </material>
+        </visual>
+
+      </link>
+    </model>
+
+
+    <model name="rock_8">
+      <static>true</static>
+      <pose>-2.7655 -1.5810 0 0 0 0</pose>
+      <link name="link">
+
+        <collision name="collision">
+          <geometry>
+            <sphere>
+              <radius>0.6466</radius>
+            </sphere>
+          </geometry>
+        </collision>
+
+        <visual name="visual">
+          <geometry>
+            <sphere>
+              <radius>0.6466</radius>
+            </sphere>
+          </geometry>
+
+          <material>
+            <ambient>0.30 0.22 0.15 1</ambient>
+            <diffuse>0.35 0.27 0.18 1</diffuse>
+          </material>
+        </visual>
+
+      </link>
+    </model>
+
+
+    <model name="rock_9">
+      <static>true</static>
+      <pose>3.0279 -0.6530 0 0 0 0</pose>
+      <link name="link">
+
+        <collision name="collision">
+          <geometry>
+            <sphere>
+              <radius>0.5246</radius>
+            </sphere>
+          </geometry>
+        </collision>
+
+        <visual name="visual">
+          <geometry>
+            <sphere>
+              <radius>0.5246</radius>
+            </sphere>
+          </geometry>
+
+          <material>
+            <ambient>0.30 0.22 0.15 1</ambient>
+            <diffuse>0.35 0.27 0.18 1</diffuse>
+          </material>
+        </visual>
+
+      </link>
+    </model>
+
+
+    <model name="rock_10">
+      <static>true</static>
+      <pose>-8.1380 3.5905 0 0 0 0</pose>
+      <link name="link">
+
+        <collision name="collision">
+          <geometry>
+            <sphere>
+              <radius>0.5511</radius>
+            </sphere>
+          </geometry>
+        </collision>
+
+        <visual name="visual">
+          <geometry>
+            <sphere>
+              <radius>0.5511</radius>
+            </sphere>
+          </geometry>
+
+          <material>
+            <ambient>0.30 0.22 0.15 1</ambient>
+            <diffuse>0.35 0.27 0.18 1</diffuse>
+          </material>
+        </visual>
+
+      </link>
+    </model>
+
+
+    <model name="rock_11">
+      <static>true</static>
+      <pose>3.3644 9.0336 0 0 0 0</pose>
+      <link name="link">
+
+        <collision name="collision">
+          <geometry>
+            <sphere>
+              <radius>0.6777</radius>
+            </sphere>
+          </geometry>
+        </collision>
+
+        <visual name="visual">
+          <geometry>
+            <sphere>
+              <radius>0.6777</radius>
+            </sphere>
+          </geometry>
+
+          <material>
+            <ambient>0.30 0.22 0.15 1</ambient>
+            <diffuse>0.35 0.27 0.18 1</diffuse>
+          </material>
+        </visual>
+
+      </link>
+    </model>
+
+
+    <model name="rock_12">
+      <static>true</static>
+      <pose>2.6703 4.6308 0 0 0 0</pose>
+      <link name="link">
+
+        <collision name="collision">
+          <geometry>
+            <sphere>
+              <radius>0.5367</radius>
+            </sphere>
+          </geometry>
+        </collision>
+
+        <visual name="visual">
+          <geometry>
+            <sphere>
+              <radius>0.5367</radius>
+            </sphere>
+          </geometry>
+
+          <material>
+            <ambient>0.30 0.22 0.15 1</ambient>
+            <diffuse>0.35 0.27 0.18 1</diffuse>
+          </material>
+        </visual>
+
+      </link>
+    </model>
+
+
+    <model name="rock_13">
+      <static>true</static>
+      <pose>-7.6139 3.6113 0 0 0 0</pose>
+      <link name="link">
+
+        <collision name="collision">
+          <geometry>
+            <sphere>
+              <radius>0.5285</radius>
+            </sphere>
+          </geometry>
+        </collision>
+
+        <visual name="visual">
+          <geometry>
+            <sphere>
+              <radius>0.5285</radius>
+            </sphere>
+          </geometry>
+
+          <material>
+            <ambient>0.30 0.22 0.15 1</ambient>
+            <diffuse>0.35 0.27 0.18 1</diffuse>
+          </material>
+        </visual>
+
+      </link>
+    </model>
+
+
+    <model name="rock_14">
+      <static>true</static>
+      <pose>1.4063 -3.2850 0 0 0 0</pose>
+      <link name="link">
+
+        <collision name="collision">
+          <geometry>
+            <sphere>
+              <radius>0.5554</radius>
+            </sphere>
+          </geometry>
+        </collision>
+
+        <visual name="visual">
+          <geometry>
+            <sphere>
+              <radius>0.5554</radius>
+            </sphere>
+          </geometry>
+
+          <material>
+            <ambient>0.30 0.22 0.15 1</ambient>
+            <diffuse>0.35 0.27 0.18 1</diffuse>
+          </material>
+        </visual>
+
+      </link>
+    </model>
+
+
+    <model name="rock_15">
+      <static>true</static>
+      <pose>8.4217 6.8264 0 0 0 0</pose>
+      <link name="link">
+
+        <collision name="collision">
+          <geometry>
+            <sphere>
+              <radius>0.5600</radius>
+            </sphere>
+          </geometry>
+        </collision>
+
+        <visual name="visual">
+          <geometry>
+            <sphere>
+              <radius>0.5600</radius>
+            </sphere>
+          </geometry>
+
+          <material>
+            <ambient>0.30 0.22 0.15 1</ambient>
+            <diffuse>0.35 0.27 0.18 1</diffuse>
+          </material>
+        </visual>
+
+      </link>
+    </model>
+
+
+    <model name="rock_16">
+      <static>true</static>
+      <pose>2.8566 -6.2478 0 0 0 0</pose>
+      <link name="link">
+
+        <collision name="collision">
+          <geometry>
+            <sphere>
+              <radius>0.6431</radius>
+            </sphere>
+          </geometry>
+        </collision>
+
+        <visual name="visual">
+          <geometry>
+            <sphere>
+              <radius>0.6431</radius>
+            </sphere>
+          </geometry>
+
+          <material>
+            <ambient>0.30 0.22 0.15 1</ambient>
+            <diffuse>0.35 0.27 0.18 1</diffuse>
+          </material>
+        </visual>
+
+      </link>
+    </model>
+
+
+    <model name="rock_17">
+      <static>true</static>
+      <pose>6.9982 3.8413 0 0 0 0</pose>
+      <link name="link">
+
+        <collision name="collision">
+          <geometry>
+            <sphere>
+              <radius>0.7867</radius>
+            </sphere>
+          </geometry>
+        </collision>
+
+        <visual name="visual">
+          <geometry>
+            <sphere>
+              <radius>0.7867</radius>
+            </sphere>
+          </geometry>
+
+          <material>
+            <ambient>0.30 0.22 0.15 1</ambient>
+            <diffuse>0.35 0.27 0.18 1</diffuse>
+          </material>
+        </visual>
+
+      </link>
+    </model>
+
+
+    <model name="rock_18">
+      <static>true</static>
+      <pose>7.5757 1.6260 0 0 0 0</pose>
+      <link name="link">
+
+        <collision name="collision">
+          <geometry>
+            <sphere>
+              <radius>0.5230</radius>
+            </sphere>
+          </geometry>
+        </collision>
+
+        <visual name="visual">
+          <geometry>
+            <sphere>
+              <radius>0.5230</radius>
+            </sphere>
+          </geometry>
+
+          <material>
+            <ambient>0.30 0.22 0.15 1</ambient>
+            <diffuse>0.35 0.27 0.18 1</diffuse>
+          </material>
+        </visual>
+
+      </link>
+    </model>
+
+
+    <model name="rock_19">
+      <static>true</static>
+      <pose>3.3417 9.1512 0 0 0 0</pose>
+      <link name="link">
+
+        <collision name="collision">
+          <geometry>
+            <sphere>
+              <radius>0.7524</radius>
+            </sphere>
+          </geometry>
+        </collision>
+
+        <visual name="visual">
+          <geometry>
+            <sphere>
+              <radius>0.7524</radius>
+            </sphere>
+          </geometry>
+
+          <material>
+            <ambient>0.30 0.22 0.15 1</ambient>
+            <diffuse>0.35 0.27 0.18 1</diffuse>
+          </material>
+        </visual>
+
+      </link>
+    </model>
+
+
+    <model name="rock_20">
+      <static>true</static>
+      <pose>0.4955 7.7096 0 0 0 0</pose>
+      <link name="link">
+
+        <collision name="collision">
+          <geometry>
+            <sphere>
+              <radius>0.5881</radius>
+            </sphere>
+          </geometry>
+        </collision>
+
+        <visual name="visual">
+          <geometry>
+            <sphere>
+              <radius>0.5881</radius>
+            </sphere>
+          </geometry>
+
+          <material>
+            <ambient>0.30 0.22 0.15 1</ambient>
+            <diffuse>0.35 0.27 0.18 1</diffuse>
+          </material>
+        </visual>
+
+      </link>
+    </model>
+
+
+    <model name="rock_21">
+      <static>true</static>
+      <pose>-3.8686 -2.0193 0 0 0 0</pose>
+      <link name="link">
+
+        <collision name="collision">
+          <geometry>
+            <sphere>
+              <radius>0.6255</radius>
+            </sphere>
+          </geometry>
+        </collision>
+
+        <visual name="visual">
+          <geometry>
+            <sphere>
+              <radius>0.6255</radius>
+            </sphere>
+          </geometry>
+
+          <material>
+            <ambient>0.30 0.22 0.15 1</ambient>
+            <diffuse>0.35 0.27 0.18 1</diffuse>
+          </material>
+        </visual>
+
+      </link>
+    </model>
+
+
+    <model name="rock_22">
+      <static>true</static>
+      <pose>6.1016 5.5318 0 0 0 0</pose>
+      <link name="link">
+
+        <collision name="collision">
+          <geometry>
+            <sphere>
+              <radius>0.6950</radius>
+            </sphere>
+          </geometry>
+        </collision>
+
+        <visual name="visual">
+          <geometry>
+            <sphere>
+              <radius>0.6950</radius>
+            </sphere>
+          </geometry>
+
+          <material>
+            <ambient>0.30 0.22 0.15 1</ambient>
+            <diffuse>0.35 0.27 0.18 1</diffuse>
+          </material>
+        </visual>
+
+      </link>
+    </model>
+
+
+    <model name="rock_23">
+      <static>true</static>
+      <pose>6.9468 5.0188 0 0 0 0</pose>
+      <link name="link">
+
+        <collision name="collision">
+          <geometry>
+            <sphere>
+              <radius>0.7918</radius>
+            </sphere>
+          </geometry>
+        </collision>
+
+        <visual name="visual">
+          <geometry>
+            <sphere>
+              <radius>0.7918</radius>
+            </sphere>
+          </geometry>
+
+          <material>
+            <ambient>0.30 0.22 0.15 1</ambient>
+            <diffuse>0.35 0.27 0.18 1</diffuse>
+          </material>
+        </visual>
+
+      </link>
+    </model>
+
+
+    <model name="rock_24">
+      <static>true</static>
+      <pose>-6.4776 3.0414 0 0 0 0</pose>
+      <link name="link">
+
+        <collision name="collision">
+          <geometry>
+            <sphere>
+              <radius>0.6139</radius>
+            </sphere>
+          </geometry>
+        </collision>
+
+        <visual name="visual">
+          <geometry>
+            <sphere>
+              <radius>0.6139</radius>
+            </sphere>
+          </geometry>
+
+          <material>
+            <ambient>0.30 0.22 0.15 1</ambient>
+            <diffuse>0.35 0.27 0.18 1</diffuse>
+          </material>
+        </visual>
+
+      </link>
+    </model>
+
+
+    <model name="rock_25">
+      <static>true</static>
+      <pose>-1.5985 -7.1371 0 0 0 0</pose>
+      <link name="link">
+
+        <collision name="collision">
+          <geometry>
+            <sphere>
+              <radius>0.5515</radius>
+            </sphere>
+          </geometry>
+        </collision>
+
+        <visual name="visual">
+          <geometry>
+            <sphere>
+              <radius>0.5515</radius>
+            </sphere>
+          </geometry>
+
+          <material>
+            <ambient>0.30 0.22 0.15 1</ambient>
+            <diffuse>0.35 0.27 0.18 1</diffuse>
+          </material>
+        </visual>
+
+      </link>
+    </model>
+
+
+    <model name="rock_26">
+      <static>true</static>
+      <pose>-8.9198 2.7554 0 0 0 0</pose>
+      <link name="link">
+
+        <collision name="collision">
+          <geometry>
+            <sphere>
+              <radius>0.6811</radius>
+            </sphere>
+          </geometry>
+        </collision>
+
+        <visual name="visual">
+          <geometry>
+            <sphere>
+              <radius>0.6811</radius>
+            </sphere>
+          </geometry>
+
+          <material>
+            <ambient>0.30 0.22 0.15 1</ambient>
+            <diffuse>0.35 0.27 0.18 1</diffuse>
+          </material>
+        </visual>
+
+      </link>
+    </model>
+
+
+    <model name="rock_27">
+      <static>true</static>
+      <pose>-2.4489 5.1405 0 0 0 0</pose>
+      <link name="link">
+
+        <collision name="collision">
+          <geometry>
+            <sphere>
+              <radius>0.7097</radius>
+            </sphere>
+          </geometry>
+        </collision>
+
+        <visual name="visual">
+          <geometry>
+            <sphere>
+              <radius>0.7097</radius>
+            </sphere>
+          </geometry>
+
+          <material>
+            <ambient>0.30 0.22 0.15 1</ambient>
+            <diffuse>0.35 0.27 0.18 1</diffuse>
+          </material>
+        </visual>
+
+      </link>
+    </model>
+
+
+    <model name="rock_28">
+      <static>true</static>
+      <pose>1.5116 -6.4835 0 0 0 0</pose>
+      <link name="link">
+
+        <collision name="collision">
+          <geometry>
+            <sphere>
+              <radius>0.6255</radius>
+            </sphere>
+          </geometry>
+        </collision>
+
+        <visual name="visual">
+          <geometry>
+            <sphere>
+              <radius>0.6255</radius>
+            </sphere>
+          </geometry>
+
+          <material>
+            <ambient>0.30 0.22 0.15 1</ambient>
+            <diffuse>0.35 0.27 0.18 1</diffuse>
+          </material>
+        </visual>
+
+      </link>
+    </model>
+
+
+    <model name="rock_29">
+      <static>true</static>
+      <pose>2.8768 6.2488 0 0 0 0</pose>
+      <link name="link">
+
+        <collision name="collision">
+          <geometry>
+            <sphere>
+              <radius>0.7389</radius>
+            </sphere>
+          </geometry>
+        </collision>
+
+        <visual name="visual">
+          <geometry>
+            <sphere>
+              <radius>0.7389</radius>
+            </sphere>
+          </geometry>
+
+          <material>
+            <ambient>0.30 0.22 0.15 1</ambient>
+            <diffuse>0.35 0.27 0.18 1</diffuse>
+          </material>
+        </visual>
+
+      </link>
+    </model>
+
+
+  </world>
+
+</sdf>

@@ -1,0 +1,79 @@
+<?xml version='1.0' encoding='utf-8'?>
+<sdf version="1.9">
+  <world name="usgs_utah">
+    <physics name="physics" type="ignored">
+      <max_step_size>0.001</max_step_size>
+      <real_time_factor>1</real_time_factor>
+      <dart>
+        <collision_detector>bullet</collision_detector>
+      </dart>
+    </physics>
+    <plugin filename="gz-sim-physics-system" name="gz::sim::systems::Physics" />
+    <plugin filename="gz-sim-user-commands-system" name="gz::sim::systems::UserCommands" />
+    <plugin filename="gz-sim-scene-broadcaster-system" name="gz::sim::systems::SceneBroadcaster" />
+    <scene>
+      <ambient>0.5 0.5 0.5 1</ambient>
+      <background>0.65 0.8 0.95 1</background>
+      <shadows>false</shadows>
+    </scene>
+    <gui fullscreen="false">
+      <plugin filename="MinimalScene" name="3D View">
+        <gz-gui>
+          <title>3D View</title>
+          <property type="string" key="state">docked</property>
+        </gz-gui>
+        <engine>ogre</engine>
+        <scene>scene</scene>
+        <camera_pose>0 -1600 1400 0 0.65 1.57079632679</camera_pose>
+        <camera_clip>
+          <near>0.1</near>
+          <far>10000</far>
+        </camera_clip>
+      </plugin>
+      <plugin filename="GzSceneManager" name="Scene Manager" />
+      <plugin filename="InteractiveViewControl" name="Interactive view control" />
+      <plugin filename="EntityTree" name="Entity tree" />
+      <plugin filename="WorldControl" name="World control" />
+    </gui>
+    <light name="sun" type="directional">
+      <pose>0 0 1500 0 0 0</pose>
+      <cast_shadows>true</cast_shadows>
+      <diffuse>0.8 0.8 0.8 1</diffuse>
+      <specular>0.1 0.1 0.1 1</specular>
+      <direction>-0.5 0.5 -0.7</direction>
+    </light>
+    <model name="usgs_utah_terrain">
+      <static>true</static>
+      <link name="terrain">
+        <collision name="terrain_collision">
+          <geometry>
+            <heightmap>
+              <uri>usgs_utah_heightmap.png</uri>
+              <size>2000 2000 73.177490234</size>
+              <pos>0 0 0</pos>
+              <sampling>1</sampling>
+            </heightmap>
+          </geometry>
+          <pose>0 0 -18.115600586 0 0 0</pose>
+        </collision>
+        <visual name="terrain_visual">
+          <geometry>
+            <heightmap>
+              <uri>usgs_utah_visual_heightmap.png</uri>
+              <size>2000 2000 73.177490234</size>
+              <pos>0 0 -18.115600586</pos>
+              <sampling>1</sampling>
+              <texture>
+                <size>100</size>
+                <diffuse>usgs_utah_diffuse.png</diffuse>
+                <normal>usgs_utah_normal.png</normal>
+              </texture>
+              <use_terrain_paging>false</use_terrain_paging>
+            </heightmap>
+          </geometry>
+        </visual>
+      </link>
+      <pose>0 0 0 0 0 0</pose>
+    </model>
+  </world>
+</sdf>

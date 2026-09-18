@@ -14,7 +14,7 @@ from rclpy.qos import (
 from geometry_msgs.msg import PoseStamped, PoseArray
 from nav_msgs.msg import Odometry, OccupancyGrid, Path
 
-REPLAN_FREQ = 3.0
+REPLAN_FREQ = 10.0
 
 GOAL_TOLERANCE = 0.3
 
@@ -22,8 +22,8 @@ OBSTACLE_COST = 100
 
 COSTMAP_WEIGHT = 3.0
 
-GRID_WIDTH_CELLS = 250
-GRID_LENGTH_CELLS = 250
+WORLD_MIN = -10.0
+WORLD_MAX = 10.0
 
 
 class AStarPlanner(Node):
@@ -31,6 +31,7 @@ class AStarPlanner(Node):
     def __init__(self):
         super().__init__('astar_planner')
         self.costmap = None
+        self.have_odom = False
 
         self.robot_x = 0.0
         self.robot_y = 0.0
@@ -92,6 +93,7 @@ class AStarPlanner(Node):
 
 
     def odom_callback(self, msg):
+        self.have_odom = True
         self.robot_x = msg.pose.pose.position.x
         self.robot_y = msg.pose.pose.position.y
 
@@ -130,10 +132,17 @@ class AStarPlanner(Node):
     
 
     def in_grid_bounds(self, x, y):
-        if x < GRID_WIDTH_CELLS and x >= 0 and y < GRID_LENGTH_CELLS and y >= 0:
-            return True
+        if not (0 <= x < self.costmap.info.width and
+                0 <= y < self.costmap.info.height):
+            return False
 
-        return False
+        # The costmap extends beyond the allowed navigation region. Check
+        # cell centres because these are the coordinates published in paths.
+        return self.in_world_bounds(*self.grid_to_world(x, y))
+
+    @staticmethod
+    def in_world_bounds(x, y):
+        return WORLD_MIN <= x <= WORLD_MAX and WORLD_MIN <= y <= WORLD_MAX
 
 
     def current_goal(self):
@@ -161,6 +170,10 @@ class AStarPlanner(Node):
 
 
     def astar(self, start, goal):
+        # Validate before indexing: negative indices otherwise wrap in NumPy.
+        if not self.in_grid_bounds(*start) or not self.in_grid_bounds(*goal):
+            return None
+
         width = self.costmap.info.width
         height = self.costmap.info.height
 
@@ -290,7 +303,7 @@ class AStarPlanner(Node):
         self.path_publisher.publish(msg)
 
     def planning_callback(self):
-        if self.costmap is None:
+        if self.costmap is None or not self.have_odom:
             return
 
         if not self.have_waypoints:
@@ -312,6 +325,12 @@ class AStarPlanner(Node):
                 self.get_logger().info('All waypoints reached!')
                 self.publish_path([])
                 return
+
+        if (not self.in_world_bounds(self.robot_x, self.robot_y) or
+                not self.in_world_bounds(goal.position.x, goal.position.y)):
+            # Clear the old path so the controller stops following it.
+            self.publish_path([])
+            return
 
         self.publish_current_goal(goal)
 
@@ -338,12 +357,10 @@ def main():
         pass
 
     node.destroy_node()
-    rclpy.shutdown()
+    rclpy.try_shutdown()
 
 
 if __name__ == '__main__':
     main()
-
-
 
 

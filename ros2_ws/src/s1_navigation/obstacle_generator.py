@@ -1,3 +1,4 @@
+import argparse
 import math
 import random
 from pathlib import Path
@@ -22,9 +23,11 @@ ROBOT_CLEARANCE = 0.75
 
 RANDOM_SEED = None
 
-TEMPLATE_FILE = "worlds/s1_world_template.sdf"
-OUTPUT_FILE = "worlds/s1_world.sdf"
-OBSTACLE_FILE = "worlds/obstacles.json"
+PACKAGE_DIR = Path(__file__).resolve().parent
+TEMPLATE_FILE = PACKAGE_DIR / "worlds/s1_world_template.sdf"
+OUTPUT_FILE = PACKAGE_DIR / "worlds/s1_world.sdf"
+OBSTACLE_FILE = PACKAGE_DIR / "worlds/obstacles.json"
+MAX_SAMPLE_ATTEMPTS = 10000
 
 OBSTACLE_MARKER = "<!-- RANDOM OBSTACLES -->"
 
@@ -72,23 +75,25 @@ def clips_robot(x, y, radius):
 
 
 # generate obstacles randomly
-def generate_obstacles():
+def generate_obstacles(obstacle_file=None):
     rng = random.Random(RANDOM_SEED)
 
     obstacles = []
     obstacle_models = []
     for i in range(NUM_OBSTACLES):
-        radius = rng.uniform(MIN_RADIUS, MAX_RADIUS)
+        radius = round(rng.uniform(MIN_RADIUS, MAX_RADIUS), 4)
 
-        while True:
-            x = rng.uniform(X_MIN + radius, X_MAX - radius)
-            y = rng.uniform(Y_MIN + radius,Y_MAX - radius)
+        for _ in range(MAX_SAMPLE_ATTEMPTS):
+            x = round(rng.uniform(X_MIN + radius, X_MAX - radius), 4)
+            y = round(rng.uniform(Y_MIN + radius, Y_MAX - radius), 4)
 
             # reject samples that clip the robot
             if clips_robot(x, y, radius):
                 continue
 
             break
+        else:
+            raise RuntimeError("Unable to place obstacle with the configured clearance")
 
         obstacle_models.append(make_sphere_model(i, x, y, radius))
         obstacles.append({"x": x, "y": y, "radius": radius})
@@ -100,16 +105,20 @@ def generate_obstacles():
             f"r={radius:.2f}"
         )
 
-    with open(OBSTACLE_FILE, "w") as f:
+    with open(obstacle_file or OBSTACLE_FILE, "w") as f:
         json.dump(obstacles, f, indent=4)
 
     return "\n".join(obstacle_models)
 
 
-def main():
+def main(args=None):
+    parser = argparse.ArgumentParser(description="Generate a world and matching obstacle metadata")
+    parser.add_argument("--template", type=Path, default=TEMPLATE_FILE)
+    parser.add_argument("--output-dir", type=Path, default=Path(OUTPUT_FILE).parent)
+    options = parser.parse_args(args)
 
-    template_path = Path(TEMPLATE_FILE)
-    output_path = Path(OUTPUT_FILE)
+    template_path = options.template
+    output_path = options.output_dir / "s1_world.sdf"
 
     if not template_path.exists():
         raise FileNotFoundError(
@@ -125,7 +134,8 @@ def main():
             f"in {template_path}"
         )
 
-    obstacles = generate_obstacles()
+    options.output_dir.mkdir(parents=True, exist_ok=True)
+    obstacles = generate_obstacles(options.output_dir / "obstacles.json")
 
     world = world.replace(OBSTACLE_MARKER, obstacles)
     output_path.write_text(world)

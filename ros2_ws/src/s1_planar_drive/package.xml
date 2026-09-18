@@ -1,0 +1,14 @@
+<?xml version="1.0"?>
+<package format="3">
+  <name>s1_planar_drive</name>
+  <version>0.0.0</version>
+  <description>Gazebo drive for the ground-constrained S1 cube.</description>
+  <maintainer email="matthew@todo.todo">matthew</maintainer>
+  <license>Apache-2.0</license>
+  <buildtool_depend>ament_cmake</buildtool_depend>
+  <depend>gz_sim_vendor</depend>
+  <depend>gz_plugin_vendor</depend>
+  <depend>gz_transport_vendor</depend>
+  <depend>gz_common_vendor</depend>
+  <export><build_type>ament_cmake</build_type></export>
+</package>

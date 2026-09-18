@@ -16,13 +16,15 @@ LOOKAHEAD_DISTANCE = 0.40
 
 PATH_END_TOLERANCE = 0.1
 
-
 class PathController(Node):
 
     def __init__(self):
         super().__init__('path_controller')
 
         self.path = []
+        self.path_progress = 0.0
+        self.have_odom = False
+        self.max_speed = self.declare_parameter("max_speed", 100.0).value
 
         self.robot_x = 0.0
         self.robot_y = 0.0
@@ -32,14 +34,14 @@ class PathController(Node):
             Path,
             '/planned_path',
             self.path_callback,
-            10
+            1
         )
 
         self.odom_subscriber = self.create_subscription(
             Odometry,
             '/model/robot/odometry',
             self.odom_callback,
-            10
+            1
         )
 
         self.cmd_vel_publisher = self.create_publisher(
@@ -58,9 +60,12 @@ class PathController(Node):
 
     def path_callback(self, msg):
         self.path = list(msg.poses)
+        # A replanned path has different segment indices. Reproject onto it.
+        self.path_progress = 0.0
 
 
     def odom_callback(self, msg):
+        self.have_odom = True
         self.robot_x = msg.pose.pose.position.x
         self.robot_y = msg.pose.pose.position.y
         orientation = msg.pose.pose.orientation
@@ -85,22 +90,49 @@ class PathController(Node):
         if len(self.path) == 0:
             return None
 
-        for pose in self.path:
-            x = pose.pose.position.x
-            y = pose.pose.position.y
+        points = [(pose.pose.position.x, pose.pose.position.y) for pose in self.path]
+        if len(points) == 1:
+            return points[0]
 
-            distance = math.hypot(x - self.robot_x,y - self.robot_y)
+        # Project onto the closest remaining segment. Progress is a segment
+        # index plus its fractional position, and never decreases on this path.
+        best_distance = math.inf
+        progress = self.path_progress
+        for index in range(min(int(progress), len(points) - 2), len(points) - 1):
+            ax, ay = points[index]
+            bx, by = points[index + 1]
+            dx, dy = bx - ax, by - ay
+            length_squared = dx * dx + dy * dy
+            fraction = 0.0 if length_squared == 0 else (
+                ((self.robot_x - ax) * dx + (self.robot_y - ay) * dy) / length_squared
+            )
+            fraction = max(max(0.0, progress - index), min(1.0, fraction))
+            px, py = ax + fraction * dx, ay + fraction * dy
+            distance = math.hypot(px - self.robot_x, py - self.robot_y)
+            if distance < best_distance:
+                best_distance = distance
+                self.path_progress = index + fraction
 
-            if distance >= LOOKAHEAD_DISTANCE:
-                return x, y
+        # Walk forward by arc length, interpolating instead of jumping between
+        # grid-cell centres or selecting distant points behind the robot.
+        remaining = LOOKAHEAD_DISTANCE
+        for index in range(min(int(self.path_progress), len(points) - 2), len(points) - 1):
+            fraction = max(0.0, self.path_progress - index)
+            ax, ay = points[index]
+            bx, by = points[index + 1]
+            px = ax + fraction * (bx - ax)
+            py = ay + fraction * (by - ay)
+            length = math.hypot(bx - px, by - py)
+            if length > 0 and remaining <= length:
+                ratio = remaining / length
+                return px + ratio * (bx - px), py + ratio * (by - py)
+            remaining -= length
 
-        final_pose = self.path[-1].pose
-
-        return (final_pose.position.x, final_pose.position.y)
+        return points[-1]
 
     
     def control_callback(self):
-        if len(self.path) == 0:
+        if not self.have_odom or len(self.path) == 0:
             self.stop_robot()
             return
 
@@ -127,7 +159,11 @@ class PathController(Node):
 
         distance = math.hypot(dx_robot, dy_robot)
 
-        speed = VELOCITY_KP * distance
+        if distance < 1e-9:
+            self.stop_robot()
+            return
+
+        speed = min(VELOCITY_KP * distance, self.max_speed)
 
         cmd = Twist()
 
@@ -147,13 +183,12 @@ def main():
     except KeyboardInterrupt:
         pass
 
-    node.stop_robot()
+    if rclpy.ok():
+        node.stop_robot()
 
     node.destroy_node()
-    rclpy.shutdown()
+    rclpy.try_shutdown()
 
 
 if __name__ == '__main__':
     main()
-
-

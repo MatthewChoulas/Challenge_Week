@@ -1,0 +1,189 @@
+<?xml version='1.0' encoding='utf-8'?>
+<sdf version="1.9">
+  <model name="robot" canonical_link="base_link">
+    <pose>0 0 0.32 0 0 0</pose>
+    <link name="base_link">
+      <gravity>false</gravity>
+      <inertial>
+        <mass>5</mass>
+        <inertia>
+          <ixx>0.442708</ixx>
+          <iyy>0.442708</iyy>
+          <izz>0.833333</izz>
+        </inertia>
+      </inertial>
+      <collision name="body_collision">
+        <geometry>
+          <box>
+            <size>1.0 1.0 0.25</size>
+          </box>
+        </geometry>
+      </collision>
+      <visual name="body_visual">
+        <geometry>
+          <box>
+            <size>1.0 1.0 0.25</size>
+          </box>
+        </geometry>
+        <material>
+          <ambient>0.1 0.3 0.9 1</ambient>
+          <diffuse>0.1 0.3 0.9 1</diffuse>
+        </material>
+      </visual>
+      <collision name="support_0_collision">
+        <pose>0.38 0.38 -0.17 0 0 0</pose>
+        <geometry>
+          <sphere>
+            <radius>0.15</radius>
+          </sphere>
+        </geometry>
+        <surface>
+          <friction>
+            <ode>
+              <mu>0.02</mu>
+              <mu2>0.02</mu2>
+            </ode>
+          </friction>
+        </surface>
+      </collision>
+      <visual name="support_0_visual">
+        <pose>0.38 0.38 -0.17 0 0 0</pose>
+        <geometry>
+          <sphere>
+            <radius>0.15</radius>
+          </sphere>
+        </geometry>
+        <material>
+          <ambient>0.12 0.12 0.12 1</ambient>
+          <diffuse>0.12 0.12 0.12 1</diffuse>
+        </material>
+      </visual>
+      <collision name="support_1_collision">
+        <pose>0.38 -0.38 -0.17 0 0 0</pose>
+        <geometry>
+          <sphere>
+            <radius>0.15</radius>
+          </sphere>
+        </geometry>
+        <surface>
+          <friction>
+            <ode>
+              <mu>0.02</mu>
+              <mu2>0.02</mu2>
+            </ode>
+          </friction>
+        </surface>
+      </collision>
+      <visual name="support_1_visual">
+        <pose>0.38 -0.38 -0.17 0 0 0</pose>
+        <geometry>
+          <sphere>
+            <radius>0.15</radius>
+          </sphere>
+        </geometry>
+        <material>
+          <ambient>0.12 0.12 0.12 1</ambient>
+          <diffuse>0.12 0.12 0.12 1</diffuse>
+        </material>
+      </visual>
+      <collision name="support_2_collision">
+        <pose>-0.38 0.38 -0.17 0 0 0</pose>
+        <geometry>
+          <sphere>
+            <radius>0.15</radius>
+          </sphere>
+        </geometry>
+        <surface>
+          <friction>
+            <ode>
+              <mu>0.02</mu>
+              <mu2>0.02</mu2>
+            </ode>
+          </friction>
+        </surface>
+      </collision>
+      <visual name="support_2_visual">
+        <pose>-0.38 0.38 -0.17 0 0 0</pose>
+        <geometry>
+          <sphere>
+            <radius>0.15</radius>
+          </sphere>
+        </geometry>
+        <material>
+          <ambient>0.12 0.12 0.12 1</ambient>
+          <diffuse>0.12 0.12 0.12 1</diffuse>
+        </material>
+      </visual>
+      <collision name="support_3_collision">
+        <pose>-0.38 -0.38 -0.17 0 0 0</pose>
+        <geometry>
+          <sphere>
+            <radius>0.15</radius>
+          </sphere>
+        </geometry>
+        <surface>
+          <friction>
+            <ode>
+              <mu>0.02</mu>
+              <mu2>0.02</mu2>
+            </ode>
+          </friction>
+        </surface>
+      </collision>
+      <visual name="support_3_visual">
+        <pose>-0.38 -0.38 -0.17 0 0 0</pose>
+        <geometry>
+          <sphere>
+            <radius>0.15</radius>
+          </sphere>
+        </geometry>
+        <material>
+          <ambient>0.12 0.12 0.12 1</ambient>
+          <diffuse>0.12 0.12 0.12 1</diffuse>
+        </material>
+      </visual>
+      <sensor name="lidar" type="gpu_lidar">
+        <pose>0 0 0.30 0 0 0</pose>
+        <topic>/scan</topic>
+        <update_rate>10</update_rate>
+        <ray>
+          <scan>
+            <horizontal>
+              <samples>720</samples>
+              <resolution>1</resolution>
+              <min_angle>-3.14159265</min_angle>
+              <max_angle>3.14159265</max_angle>
+            </horizontal>
+            <vertical>
+              <samples>1</samples>
+              <resolution>1</resolution>
+              <min_angle>0</min_angle>
+              <max_angle>0</max_angle>
+            </vertical>
+          </scan>
+          <range>
+            <min>0.10</min>
+            <max>12.0</max>
+            <resolution>0.01</resolution>
+          </range>
+        </ray>
+        <always_on>true</always_on>
+        <visualize>true</visualize>
+      </sensor>
+    </link>
+    <plugin filename="s1_terrain_drive" name="s1::TerrainDrive">
+      <heightmap_uri>usgs_utah_heightmap.png</heightmap_uri>
+      <terrain_size>2000</terrain_size>
+      <height_range>73.177490234</height_range>
+      <terrain_z_offset>-18.115600586</terrain_z_offset>
+      <max_slope_deg>30</max_slope_deg>
+    </plugin>
+    <plugin filename="gz-sim-odometry-publisher-system" name="gz::sim::systems::OdometryPublisher">
+      <odom_frame>odom</odom_frame>
+      <robot_base_frame>base_link</robot_base_frame>
+      <odom_publish_frequency>30</odom_publish_frequency>
+      <odom_topic>/model/robot/odometry</odom_topic>
+      <dimensions>3</dimensions>
+    </plugin>
+  </model>
+</sdf>

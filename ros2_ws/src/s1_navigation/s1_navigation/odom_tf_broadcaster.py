@@ -56,7 +56,8 @@ def main(args=None):
         pass
 
     node.destroy_node()
-    rclpy.shutdown()
+    # ROS may already have shut the default context down after SIGINT.
+    rclpy.try_shutdown()
 
 
 if __name__ == '__main__':

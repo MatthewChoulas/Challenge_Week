@@ -17,7 +17,7 @@ setup(
         ),
         (
             'share/' + package_name,
-            ['package.xml']
+            ['package.xml', 'obstacle_generator.py']
         ),
 
         (

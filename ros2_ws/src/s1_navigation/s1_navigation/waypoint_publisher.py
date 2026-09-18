@@ -1,4 +1,4 @@
-import json
+import xml.etree.ElementTree as ET
 import math
 import random
 from pathlib import Path
@@ -15,7 +15,8 @@ from geometry_msgs.msg import Pose, PoseArray
 from ament_index_python.packages import get_package_share_directory
 from visualization_msgs.msg import Marker, MarkerArray
 
-NUM_WAYPOINTS = 3
+NUM_WAYPOINTS = 5
+MAX_SAMPLE_ATTEMPTS = 10000
 
 X_MIN = -10.0
 X_MAX = 10.0
@@ -37,7 +38,25 @@ RANDOM_SEED = None
 
 PACKAGE_SHARE = Path(get_package_share_directory('s1_navigation'))
 
-OBSTACLE_FILE = PACKAGE_SHARE / 'worlds' / 'obstacles.json'
+WORLD_FILE = PACKAGE_SHARE / 'worlds' / 's1_world.sdf'
+
+
+def load_world_obstacles(world_file):
+    """Read the rock geometry written by obstacle_generator from Gazebo's SDF."""
+    world = ET.parse(world_file).getroot().find('world')
+    if world is None:
+        raise ValueError(f'No world found in {world_file}')
+    obstacles = []
+    for model in world.findall('model'):
+        if not model.get('name', '').startswith('rock_'):
+            continue
+        pose = [float(value) for value in model.findtext('pose', '').split()]
+        radius = float(model.findtext('link/collision/geometry/sphere/radius', 'nan'))
+        if (len(pose) != 6 or not all(math.isfinite(value) for value in pose)
+                or not math.isfinite(radius) or radius <= 0):
+            raise ValueError(f'Invalid generated obstacle: {model.get("name")}')
+        obstacles.append({'x': pose[0], 'y': pose[1], 'radius': radius})
+    return obstacles
 
 
 class WaypointPublisher(Node):
@@ -80,15 +99,8 @@ class WaypointPublisher(Node):
         self.get_logger().info(f'Published {len(self.waypoints)} markers on /waypoint_markers')
 
     def load_obstacles(self):
-        try:
-            with open(OBSTACLE_FILE, 'r') as file:
-                data = json.load(file)
-
-        except FileNotFoundError:
-            self.get_logger().error(f'Obstacle file not found: {OBSTACLE_FILE}')
-            raise
-
-        return data
+        world_file = self.declare_parameter('world_file', str(WORLD_FILE)).value
+        return load_world_obstacles(world_file)
 
 
     def too_close_to_start(self, x, y):
@@ -122,6 +134,9 @@ class WaypointPublisher(Node):
 
 
     def is_valid_waypoint(self, x, y, waypoints):
+        if not (X_MIN <= x <= X_MAX and Y_MIN <= y <= Y_MAX):
+            return False
+
         if self.too_close_to_start(x, y):
             return False
 
@@ -138,7 +153,7 @@ class WaypointPublisher(Node):
         waypoints = []
 
         for index in range(NUM_WAYPOINTS):
-            while True:
+            for _ in range(MAX_SAMPLE_ATTEMPTS):
                 x = self.rng.uniform(X_MIN, X_MAX)
                 y = self.rng.uniform(Y_MIN, Y_MAX)
 
@@ -153,6 +168,11 @@ class WaypointPublisher(Node):
                 )
 
                 break
+            else:
+                raise RuntimeError(
+                    f"Unable to place waypoint {index + 1} after "
+                    f"{MAX_SAMPLE_ATTEMPTS} attempts; check obstacle density and clearance"
+                )
 
         return waypoints
 
@@ -260,7 +280,7 @@ def main():
         pass
 
     node.destroy_node()
-    rclpy.shutdown()
+    rclpy.try_shutdown()
 
 
 if __name__ == '__main__':

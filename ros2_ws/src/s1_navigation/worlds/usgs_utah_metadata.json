@@ -1,0 +1,58 @@
+{
+  "center_wgs84": {
+    "latitude": 38.42287240335025,
+    "longitude": -110.78495572815902
+  },
+  "crs": "EPSG:26912",
+  "vertical_datum": "NAVD88",
+  "center_utm_m": [
+    518771.39193143265,
+    4252757.177159773
+  ],
+  "bounds_utm_m": [
+    517771.39193143265,
+    4251757.177159773,
+    519771.39193143265,
+    4253757.177159773
+  ],
+  "extent_m": [
+    2000,
+    2000
+  ],
+  "dem_shape": [
+    2000,
+    2000
+  ],
+  "dem_pixel_size_m": 1,
+  "dem_elevation_min_m": 1357.4169921875,
+  "dem_elevation_max_m": 1430.587890625,
+  "gazebo_vertex_shape": [
+    2049,
+    2049
+  ],
+  "gazebo_vertex_spacing_m": 0.9765625,
+  "gazebo_visual_vertex_shape": [
+    513,
+    513
+  ],
+  "gazebo_visual_vertex_spacing_m": 3.90625,
+  "gazebo_min_elevation_m": 1357.4097900390625,
+  "gazebo_max_elevation_m": 1430.5872802734375,
+  "center_elevation_m": 1375.525390625,
+  "gazebo_height_range_m": 73.177490234375,
+  "gazebo_z_offset_m": -18.1156005859375,
+  "png_quantization_step_m": 0.0011166169258316166,
+  "gazebo_axes": "x = UTM grid east, y = UTM grid north, z = up; center ground at z=0",
+  "resampling": "bilinear; 1 m source; exact centered UTM square",
+  "source_urls": [
+    "https://prd-tnm.s3.amazonaws.com/StagedProducts/Elevation/1m/Projects/UT_StatewideSouth_2020_A20/TIFF/USGS_1M_12_x51y426_UT_StatewideSouth_2020_A20.tif",
+    "https://prd-tnm.s3.amazonaws.com/StagedProducts/Elevation/1m/Projects/UT_Southern_QL1_2018/TIFF/USGS_one_meter_x51y426_UT_Southern_QL1_2018.tif"
+  ],
+  "source_metadata_urls": [
+    "https://prd-tnm.s3.amazonaws.com/StagedProducts/Elevation/1m/Projects/UT_StatewideSouth_2020_A20/metadata/USGS_1M_12_x51y426_UT_StatewideSouth_2020_A20.xml",
+    "https://prd-tnm.s3.amazonaws.com/StagedProducts/Elevation/1m/Projects/UT_Southern_QL1_2018/metadata/USGS_one_meter_x51y426_UT_Southern_QL1_2018_meta.xml"
+  ],
+  "source_priority": "2020 first, 2018 where 2020 has NoData; no synthetic gap filling",
+  "generated_utc": "2026-09-17T08:36:01.992558+00:00",
+  "dem_sha256": "821ad153f2f7222bf87574f2fbba2861b706f99be14fefa159785261d81dffc3"
+}

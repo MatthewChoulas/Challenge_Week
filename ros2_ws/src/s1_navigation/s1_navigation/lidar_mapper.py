@@ -42,6 +42,9 @@ class LidarMapper(Node):
 
         self.observed = np.zeros((self.map_height, self.map_width,), dtype=bool)
 
+        self.have_odom = False
+        self.have_scan = False
+
         self.robot_x = 0.0
         self.robot_y = 0.0
         self.robot_yaw = 0.0
@@ -94,6 +97,7 @@ class LidarMapper(Node):
 
     def odom_callback(self, msg):
 
+        self.have_odom = True
         position = msg.pose.pose.position
         orientation = msg.pose.pose.orientation
 
@@ -179,6 +183,9 @@ class LidarMapper(Node):
 
 
     def scan_callback(self, scan):
+        # Concurrent launch can deliver scans before the first robot pose.
+        if not self.have_odom or not scan.ranges:
+            return
 
         robot_grid_x, robot_grid_y = self.world_to_grid(self.robot_x, self.robot_y)
 
@@ -243,6 +250,8 @@ class LidarMapper(Node):
 
             angle += scan.angle_increment
 
+        self.have_scan = True
+
         self.get_logger().info(
             f"Scan: {len(scan.ranges)} rays, "
             f"robot=({self.robot_x:.2f}, {self.robot_y:.2f}), "
@@ -250,6 +259,9 @@ class LidarMapper(Node):
         )
 
     def publish_map(self):
+        # An empty startup map would let the planner drive through obstacles.
+        if not self.have_scan:
+            return
 
         msg = OccupancyGrid()
 
@@ -369,12 +381,7 @@ def main():
         pass
 
     node.destroy_node()
-    rclpy.shutdown()
+    rclpy.try_shutdown()
 
 if __name__ == '__main__':
     main()
-    
-
-        
-
-        

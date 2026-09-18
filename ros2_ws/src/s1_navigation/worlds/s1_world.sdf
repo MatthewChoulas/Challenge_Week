@@ -76,13 +76,13 @@
 
     <!-- ROBOT -->
 
-    <model name="robot">
+    <model name="robot" canonical_link="base_link">
 
       <pose>0 0 0.125 0 0 0</pose>
 
       <link name="base_link">
 
-        <gravity>false</gravity>
+        <gravity>true</gravity>
 
         <inertial>
           <mass>5.0</mass>
@@ -162,9 +162,34 @@
 
       </link>
 
+      <!-- Invisible guide links form an x/y/yaw joint chain to the world.
+           This physically locks z, roll and pitch while preserving planar motion. -->
+      <link name="ground_x_link">
+        <inertial><mass>0.01</mass><inertia>
+          <ixx>0.001</ixx><iyy>0.001</iyy><izz>0.001</izz>
+        </inertia></inertial>
+      </link>
+      <link name="ground_y_link">
+        <inertial><mass>0.01</mass><inertia>
+          <ixx>0.001</ixx><iyy>0.001</iyy><izz>0.001</izz>
+        </inertia></inertial>
+      </link>
+      <joint name="ground_x" type="prismatic">
+        <parent>world</parent><child>ground_x_link</child>
+        <axis><xyz>1 0 0</xyz></axis>
+      </joint>
+      <joint name="ground_y" type="prismatic">
+        <parent>ground_x_link</parent><child>ground_y_link</child>
+        <axis><xyz>0 1 0</xyz></axis>
+      </joint>
+      <joint name="ground_yaw" type="revolute">
+        <parent>ground_y_link</parent><child>base_link</child>
+        <axis><xyz>0 0 1</xyz></axis>
+      </joint>
+
       <plugin
-        filename="gz-sim-velocity-control-system"
-        name="gz::sim::systems::VelocityControl">
+        filename="libs1_planar_drive.so"
+        name="s1::PlanarDrive">
 
         <topic>/model/robot/cmd_vel</topic>
 

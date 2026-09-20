@@ -9,11 +9,19 @@
 
   <depend>rclpy</depend>
   <depend>sensor_msgs</depend>
+  <depend>std_msgs</depend>
+  <depend>grid_map_msgs</depend>
+  <exec_depend>grid_map_rviz_plugin</exec_depend>
+  <exec_depend>rviz2</exec_depend>
+  <exec_depend>python3-pil</exec_depend>
+  <exec_depend>python3-numpy</exec_depend>
   <depend>nav_msgs</depend>
   <depend>geometry_msgs</depend>
   <depend>tf2_ros</depend>
   <depend>visualization_msgs</depend>
   <depend>ament_index_python</depend>
+  <exec_depend>python3-pyproj</exec_depend>
+  <exec_depend>ros_gz_interfaces</exec_depend>
 
   <exec_depend>launch</exec_depend>
   <exec_depend>launch_ros</exec_depend>

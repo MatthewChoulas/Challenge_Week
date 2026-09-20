@@ -86,9 +86,8 @@ def main():
     encoded = np.rint((terrain.astype(np.float64)-minimum) / height_range * 65535).astype(np.uint16)
     heightmap = Image.fromarray(encoded)
     heightmap.save(out / 'usgs_utah_heightmap.png')
-    # Keep the 2,049-square map for 1 m physics, but do not make the GUI build
-    # its four-million-vertex visual mesh. 513 is also 2^n+1 and renders the
-    # same elevation range at a much lower cost.
+    # Retain a lightweight preview asset. Gazebo uses the full map with
+    # terrain paging enabled so visual and collision elevations agree.
     heightmap.resize((513, 513), Image.Resampling.BILINEAR).save(
         out / 'usgs_utah_visual_heightmap.png')
     Image.new('RGB', (16, 16), (163, 126, 87)).save(out / 'usgs_utah_diffuse.png')
@@ -112,8 +111,8 @@ def main():
                 extent_m=[2000, 2000], dem_shape=[2000, 2000], dem_pixel_size_m=1,
                 dem_elevation_min_m=float(dem.min()), dem_elevation_max_m=float(dem.max()),
                 gazebo_vertex_shape=[2049, 2049], gazebo_vertex_spacing_m=spacing,
-                gazebo_visual_vertex_shape=[513, 513],
-                gazebo_visual_vertex_spacing_m=2000/512,
+                gazebo_visual_vertex_shape=[2049, 2049],
+                gazebo_visual_vertex_spacing_m=2000/2048,
                 gazebo_min_elevation_m=minimum, gazebo_max_elevation_m=maximum,
                 center_elevation_m=center_height,
                 gazebo_height_range_m=height_range, gazebo_z_offset_m=minimum-center_height,
@@ -137,7 +136,7 @@ def main():
     texture = '''<texture><size>100</size>
               <diffuse>usgs_utah_diffuse.png</diffuse>
               <normal>usgs_utah_normal.png</normal>
-            </texture><use_terrain_paging>false</use_terrain_paging>'''
+            </texture><use_terrain_paging>true</use_terrain_paging>'''
     world = f'''<?xml version="1.0"?>
 <sdf version="1.9">
   <world name="usgs_utah">
@@ -171,7 +170,7 @@ def main():
       <collision name="terrain_collision">
         <pose>0 0 {minimum-center_height:.9f} 0 0 0</pose>
         {geometry.format(uri='usgs_utah_heightmap.png', extra='', offset=0)}</collision>
-      <visual name="terrain_visual">{geometry.format(uri='usgs_utah_visual_heightmap.png', extra=texture, offset=f'{minimum-center_height:.9f}')}</visual>
+      <visual name="terrain_visual">{geometry.format(uri='usgs_utah_heightmap.png', extra=texture, offset=f'{minimum-center_height:.9f}')}</visual>
     </link></model>
   </world>
 </sdf>

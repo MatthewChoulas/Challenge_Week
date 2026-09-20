@@ -3,6 +3,7 @@
 #include <chrono>
 #include <cmath>
 #include <mutex>
+#include <limits>
 #include <string>
 
 #include <gz/common/Console.hh>
@@ -13,6 +14,7 @@
 #include <gz/sim/Model.hh>
 #include <gz/sim/System.hh>
 #include <gz/sim/Util.hh>
+#include <gz/sim/components/PoseCmd.hh>
 #include <gz/transport/Node.hh>
 
 namespace s1
@@ -60,6 +62,21 @@ class TerrainDrive : public gz::sim::System,
     const double dt = std::chrono::duration<double>(_info.dt).count();
     if (dt <= 0.0)
       return;
+
+    // UserCommands may have queued a GPS teleport this tick. Respect it
+    // before issuing our own pose command, and place the body on the DEM.
+    const auto reset = _ecm.Component<gz::sim::components::WorldPoseCmd>(
+        this->model.Entity());
+    if (reset)
+    {
+      const auto target = reset->Data();
+      gz::math::Pose3d surface;
+      if (this->SurfacePose(target.X(), target.Y(), target.Rot().Yaw(), surface))
+        this->model.SetWorldPoseCmd(_ecm, surface);
+      this->base.SetLinearVelocity(_ecm, gz::math::Vector3d::Zero);
+      this->base.SetAngularVelocity(_ecm, gz::math::Vector3d::Zero);
+      return;
+    }
 
     double vx = 0.0;
     double vy = 0.0;
@@ -116,8 +133,8 @@ class TerrainDrive : public gz::sim::System,
     const double px = std::clamp((_x + half) / this->terrainSize *
         (this->heightmap.Width() - 1), 0.0,
         static_cast<double>(this->heightmap.Width() - 1));
-    // Gazebo heightmaps map increasing image rows to increasing world Y.
-    const double py = std::clamp((_y + half) / this->terrainSize *
+    // USGS raster rows run from north (+Y) to south (-Y).
+    const double py = std::clamp((half - _y) / this->terrainSize *
         (this->heightmap.Height() - 1), 0.0,
         static_cast<double>(this->heightmap.Height() - 1));
     const auto x0 = static_cast<unsigned int>(std::floor(px));
@@ -185,14 +202,22 @@ class TerrainDrive : public gz::sim::System,
     const double pitch = std::atan2(nx, normal.Z());
     const gz::math::Quaterniond rotation(roll, pitch, _yaw);
 
-    double bodyZ = centerHeight + kWheelCenterDepth + kWheelRadius;
+    // Derive support from the wheels, not an imaginary wheel at the body
+    // centre. The old flat-ground minimum lifted all wheels on slopes.
+    double bodyZ = -std::numeric_limits<double>::infinity();
     for (const auto &wheel : kWheelOffsets)
     {
       const auto offset = rotation.RotateVector(
           gz::math::Vector3d(wheel[0], wheel[1], -kWheelCenterDepth));
-      bodyZ = std::max(bodyZ,
-          this->Height(_x + offset.X(), _y + offset.Y()) +
-          kWheelRadius - offset.Z());
+      double wheelHeight;
+      gz::math::Vector3d wheelNormal;
+      if (!this->HeightAndNormal(_x + offset.X(), _y + offset.Y(),
+                                wheelHeight, wheelNormal))
+        return false;
+      // A sphere touches an inclined plane at radius / normal.Z() above
+      // the plane vertically, rather than one radius above it.
+      bodyZ = std::max(bodyZ, wheelHeight +
+          kWheelRadius / wheelNormal.Z() - offset.Z());
     }
     _pose.Set(_x, _y, bodyZ, roll, pitch, _yaw);
     return true;

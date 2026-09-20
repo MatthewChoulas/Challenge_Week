@@ -32,10 +32,10 @@
   ],
   "gazebo_vertex_spacing_m": 0.9765625,
   "gazebo_visual_vertex_shape": [
-    513,
-    513
+    2049,
+    2049
   ],
-  "gazebo_visual_vertex_spacing_m": 3.90625,
+  "gazebo_visual_vertex_spacing_m": 0.9765625,
   "gazebo_min_elevation_m": 1357.4097900390625,
   "gazebo_max_elevation_m": 1430.5872802734375,
   "center_elevation_m": 1375.525390625,
@@ -54,5 +54,6 @@
   ],
   "source_priority": "2020 first, 2018 where 2020 has NoData; no synthetic gap filling",
   "generated_utc": "2026-09-17T08:36:01.992558+00:00",
-  "dem_sha256": "821ad153f2f7222bf87574f2fbba2861b706f99be14fefa159785261d81dffc3"
+  "dem_sha256": "821ad153f2f7222bf87574f2fbba2861b706f99be14fefa159785261d81dffc3",
+  "gazebo_visual_terrain_paging": true
 }

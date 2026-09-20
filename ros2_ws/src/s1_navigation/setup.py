@@ -11,6 +11,7 @@ setup(
     version='0.0.0',
     packages=find_packages(exclude=['test']),
     data_files=[
+        ('share/' + package_name + '/rviz', glob('rviz/*.rviz')),
         (
             'share/ament_index/resource_index/packages',
             ['resource/' + package_name]
@@ -30,7 +31,7 @@ setup(
             glob('worlds/*')
         ),
     ],
-    install_requires=['setuptools'],
+    install_requires=['setuptools', 'pyproj'],
     zip_safe=True,
     maintainer='matthew',
     maintainer_email='matthew@todo.todo',
@@ -43,11 +44,16 @@ setup(
     },
     entry_points={
         'console_scripts': [
+            'elevation_map_publisher = s1_navigation.elevation_map_publisher:main',
+            'gps_waypoint_publisher = s1_navigation.gps_waypoint_publisher:main',
+            'gps_waypoint_converter = s1_navigation.gps_waypoint_converter:main',
             'lidar_mapper = s1_navigation.lidar_mapper:main',
             'odom_tf_broadcaster = s1_navigation.odom_tf_broadcaster:main',
             'waypoint_publisher = s1_navigation.waypoint_publisher:main',
             'astar_planner = s1_navigation.astar_planner:main',
-            'path_controller = s1_navigation.path_controller:main'
+            'path_controller = s1_navigation.path_controller:main',
+            'gps_start_publisher = s1_navigation.gps_start_publisher:main',
+            'gps_odometry = s1_navigation.gps_odometry:main'
         ],
     },
 )

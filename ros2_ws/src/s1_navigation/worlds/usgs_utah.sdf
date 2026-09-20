@@ -59,7 +59,7 @@
         <visual name="terrain_visual">
           <geometry>
             <heightmap>
-              <uri>usgs_utah_visual_heightmap.png</uri>
+              <uri>usgs_utah_heightmap.png</uri>
               <size>2000 2000 73.177490234</size>
               <pos>0 0 -18.115600586</pos>
               <sampling>1</sampling>
@@ -68,7 +68,7 @@
                 <diffuse>usgs_utah_diffuse.png</diffuse>
                 <normal>usgs_utah_normal.png</normal>
               </texture>
-              <use_terrain_paging>false</use_terrain_paging>
+              <use_terrain_paging>true</use_terrain_paging>
             </heightmap>
           </geometry>
         </visual>

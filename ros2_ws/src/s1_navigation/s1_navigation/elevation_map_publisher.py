@@ -15,6 +15,19 @@ from std_msgs.msg import Float32MultiArray, MultiArrayDimension
 MAX_TRAVERSABLE_SLOPE_DEGREES = 30.0
 
 
+def maximum_filter_3x3(values):
+    """Assign each cell the largest value in its 3-by-3 neighborhood."""
+    padded = np.pad(values, 1, mode='edge')
+    rows, columns = values.shape
+    neighborhoods = [
+        padded[row_offset:row_offset + rows,
+               column_offset:column_offset + columns]
+        for row_offset in range(3)
+        for column_offset in range(3)
+    ]
+    return np.maximum.reduce(neighborhoods)
+
+
 def grid_map_layer(values):
     """Pack an X-by-Y NumPy matrix into GridMap's column-major layout."""
     rows, columns = values.shape
@@ -63,6 +76,10 @@ def build_elevation_grid(worlds, downsample_factor=1):
     slope_degrees = np.degrees(np.arctan(np.hypot(gradient_x, gradient_y)))
     traversability_cost = np.clip(
         slope_degrees / MAX_TRAVERSABLE_SLOPE_DEGREES, 0.0, 1.0)
+    # Inflate steep terrain by one grid cell in every direction. The planner
+    # therefore checks the worst cost underneath an approximately 3x3-cell
+    # footprint instead of treating the rover as a point.
+    traversability_cost = maximum_filter_3x3(traversability_cost)
 
     message = GridMap()
     message.header.frame_id = 'odom'

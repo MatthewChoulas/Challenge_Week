@@ -38,6 +38,17 @@ Visualization Manager:
         Reliability Policy: Reliable
         Durability Policy: Transient Local
         Depth: 1
+    - Class: rviz_default_plugins/Path
+      Name: Planned Path
+      Enabled: true
+      Topic:
+        Value: /planned_path
+        Reliability Policy: Reliable
+        Durability Policy: Volatile
+        Depth: 10
+      Line Style: Lines
+      Line Width: 2.0
+      Color: 0; 0; 0
   Views:
     Current:
       Class: rviz_default_plugins/Orbit

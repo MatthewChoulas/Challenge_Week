@@ -1,20 +1,25 @@
 import math
 
-import rclpy
-
-from rclpy.node import Node
-
 from geometry_msgs.msg import Twist
-from nav_msgs.msg import Odometry, Path
+from nav_msgs.msg import OccupancyGrid, Odometry, Path
+import numpy as np
+import rclpy
+from rclpy.node import Node
+from rclpy.qos import DurabilityPolicy, QoSProfile, ReliabilityPolicy
+from std_msgs.msg import Empty
 
 
 CONTROL_FREQ = 20.0
 
-VELOCITY_KP = 2.0
+VELOCITY_KP = 6.0
 
 LOOKAHEAD_DISTANCE = 0.40
 
 PATH_END_TOLERANCE = 0.1
+OBSTACLE_STOP_DISTANCE = 3.0
+ROVER_CORRIDOR_HALF_WIDTH = 1.0
+REPLAN_REQUEST_PERIOD = 1.0
+
 
 class PathController(Node):
 
@@ -24,11 +29,17 @@ class PathController(Node):
         self.path = []
         self.path_progress = 0.0
         self.have_odom = False
-        self.max_speed = self.declare_parameter("max_speed", 100.0).value
+        self.max_speed = self.declare_parameter('max_speed', 100.0).value
+        self.obstacle_stop_distance = float(self.declare_parameter(
+            'obstacle_stop_distance', OBSTACLE_STOP_DISTANCE).value)
+        self.corridor_half_width = float(self.declare_parameter(
+            'obstacle_corridor_half_width', ROVER_CORRIDOR_HALF_WIDTH).value)
 
         self.robot_x = 0.0
         self.robot_y = 0.0
         self.robot_yaw = 0.0
+        self.obstacle_points = np.empty((0, 2), dtype=np.float32)
+        self.last_replan_request_ns = 0
 
         self.path_subscriber = self.create_subscription(
             Path,
@@ -44,9 +55,24 @@ class PathController(Node):
             1
         )
 
+        retained = QoSProfile(
+            depth=1, reliability=ReliabilityPolicy.RELIABLE,
+            durability=DurabilityPolicy.TRANSIENT_LOCAL)
+        self.obstacle_subscriber = self.create_subscription(
+            OccupancyGrid,
+            '/local_occupancy_map',
+            self.obstacle_callback,
+            retained
+        )
+
         self.cmd_vel_publisher = self.create_publisher(
             Twist,
             '/model/robot/cmd_vel',
+            10
+        )
+        self.replan_publisher = self.create_publisher(
+            Empty,
+            '/replan_path',
             10
         )
 
@@ -56,13 +82,11 @@ class PathController(Node):
         )
 
         self.get_logger().info('Holonomic path controller started')
-    
 
     def path_callback(self, msg):
         self.path = list(msg.poses)
         # A replanned path has different segment indices. Reproject onto it.
         self.path_progress = 0.0
-
 
     def odom_callback(self, msg):
         self.have_odom = True
@@ -70,11 +94,24 @@ class PathController(Node):
         self.robot_y = msg.pose.pose.position.y
         orientation = msg.pose.pose.orientation
 
-        siny_cosp = 2.0 * (orientation.w * orientation.z + orientation.x * orientation.y)
-        cosy_cosp = 1.0 - 2.0 * (orientation.y * orientation.y + orientation.z * orientation.z)
+        siny_cosp = 2.0 * (
+            orientation.w * orientation.z + orientation.x * orientation.y)
+        cosy_cosp = 1.0 - 2.0 * (
+            orientation.y * orientation.y + orientation.z * orientation.z)
 
         self.robot_yaw = math.atan2(siny_cosp, cosy_cosp)
 
+    def obstacle_callback(self, msg):
+        expected = msg.info.width * msg.info.height
+        if msg.info.resolution <= 0 or len(msg.data) != expected:
+            return
+        grid = np.asarray(msg.data, dtype=np.int16).reshape(
+            msg.info.height, msg.info.width)
+        rows, columns = np.where(grid >= 100)
+        self.obstacle_points = np.column_stack((
+            msg.info.origin.position.x + (columns + 0.5) * msg.info.resolution,
+            msg.info.origin.position.y + (rows + 0.5) * msg.info.resolution,
+        )).astype(np.float32)
 
     def stop_robot(self):
         cmd = Twist()
@@ -85,12 +122,38 @@ class PathController(Node):
 
         self.cmd_vel_publisher.publish(cmd)
 
+    def obstacle_blocks_motion(self, direction_x, direction_y):
+        """Check the short corridor directly ahead of the requested motion."""
+        if len(self.obstacle_points) == 0:
+            return False
+        length = math.hypot(direction_x, direction_y)
+        if length < 1e-9:
+            return False
+        unit_x, unit_y = direction_x / length, direction_y / length
+        offsets = self.obstacle_points - (self.robot_x, self.robot_y)
+        forward = offsets[:, 0] * unit_x + offsets[:, 1] * unit_y
+        sideways = np.abs(offsets[:, 0] * unit_y - offsets[:, 1] * unit_x)
+        return bool(np.any(
+            (forward >= 0.0) & (forward <= self.obstacle_stop_distance)
+            & (sideways <= self.corridor_half_width)))
+
+    def request_replan(self):
+        now = self.get_clock().now().nanoseconds
+        if (now - self.last_replan_request_ns
+                < int(REPLAN_REQUEST_PERIOD * 1e9)):
+            return
+        self.replan_publisher.publish(Empty())
+        self.last_replan_request_ns = now
+        self.get_logger().warning(
+            'Obstacle in stopping corridor; stopped and requested A* replan',
+            throttle_duration_sec=2.0)
 
     def select_target(self):
         if len(self.path) == 0:
             return None
 
-        points = [(pose.pose.position.x, pose.pose.position.y) for pose in self.path]
+        points = [(pose.pose.position.x, pose.pose.position.y)
+                  for pose in self.path]
         if len(points) == 1:
             return points[0]
 
@@ -104,7 +167,8 @@ class PathController(Node):
             dx, dy = bx - ax, by - ay
             length_squared = dx * dx + dy * dy
             fraction = 0.0 if length_squared == 0 else (
-                ((self.robot_x - ax) * dx + (self.robot_y - ay) * dy) / length_squared
+                ((self.robot_x - ax) * dx + (self.robot_y - ay) * dy)
+                / length_squared
             )
             fraction = max(max(0.0, progress - index), min(1.0, fraction))
             px, py = ax + fraction * dx, ay + fraction * dy
@@ -116,7 +180,8 @@ class PathController(Node):
         # Walk forward by arc length, interpolating instead of jumping between
         # grid-cell centres or selecting distant points behind the robot.
         remaining = LOOKAHEAD_DISTANCE
-        for index in range(min(int(self.path_progress), len(points) - 2), len(points) - 1):
+        first_segment = min(int(self.path_progress), len(points) - 2)
+        for index in range(first_segment, len(points) - 1):
             fraction = max(0.0, self.path_progress - index)
             ax, ay = points[index]
             bx, by = points[index + 1]
@@ -130,7 +195,6 @@ class PathController(Node):
 
         return points[-1]
 
-    
     def control_callback(self):
         if not self.have_odom or len(self.path) == 0:
             self.stop_robot()
@@ -138,7 +202,9 @@ class PathController(Node):
 
         final_pose = self.path[-1].pose
 
-        distance_to_final_pos = math.hypot(final_pose.position.x - self.robot_x, final_pose.position.y - self.robot_y)
+        distance_to_final_pos = math.hypot(
+            final_pose.position.x - self.robot_x,
+            final_pose.position.y - self.robot_y)
 
         if distance_to_final_pos <= PATH_END_TOLERANCE:
             self.stop_robot()
@@ -164,6 +230,11 @@ class PathController(Node):
             return
 
         speed = min(VELOCITY_KP * distance, self.max_speed)
+
+        if self.obstacle_blocks_motion(dx_odom, dy_odom):
+            self.stop_robot()
+            self.request_replan()
+            return
 
         cmd = Twist()
 

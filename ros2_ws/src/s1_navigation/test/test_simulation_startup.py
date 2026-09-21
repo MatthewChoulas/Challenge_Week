@@ -10,18 +10,16 @@ from s1_navigation.lidar_mapper import LidarMapper
 from s1_navigation.path_controller import PathController
 
 
-def test_mapper_waits_for_odometry_and_scan():
-    mapper = SimpleNamespace(have_odom=False, have_scan=False)
-    # Neither callback may touch map state before its input is ready.
-    LidarMapper.scan_callback(mapper, SimpleNamespace(ranges=[1.0]))
-    LidarMapper.publish_map(mapper)
-    mapper.have_odom = True
-    LidarMapper.scan_callback(mapper, SimpleNamespace(ranges=[]))
-    LidarMapper.publish_map(mapper)
+def test_mapper_waits_for_odometry_and_cloud():
+    mapper = SimpleNamespace(have_odom=False)
+    # A cloud received before odometry must not touch map state.
+    LidarMapper.cloud_callback(mapper, SimpleNamespace(width=1, height=1))
+    LidarMapper.publish_maps(mapper)
 
 
 def test_planner_waits_for_odometry():
-    planner = SimpleNamespace(costmap=object(), have_odom=False)
+    planner = SimpleNamespace(
+        terrain_cost=object(), have_odom=False, have_waypoints=False)
     AStarPlanner.planning_callback(planner)
 
 
@@ -32,6 +30,8 @@ def controller(have_odom=True):
         have_odom=have_odom, path=[goal], robot_x=0.0, robot_y=0.0,
         robot_yaw=0.0, max_speed=0.5, stop_robot=Mock(),
         select_target=Mock(return_value=(10.0, 10.0)),
+        obstacle_blocks_motion=Mock(return_value=False),
+        request_replan=Mock(),
         cmd_vel_publisher=Mock(),
     )
 

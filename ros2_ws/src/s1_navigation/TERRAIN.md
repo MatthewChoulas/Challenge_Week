@@ -78,11 +78,14 @@ steeper than 30 degrees. This is an idealized omnidirectional rover, not a tire,
 suspension, soil-traction, or rollover simulation. The 0.5 second command
 watchdog stops motion immediately when commands cease.
 
-`ros2 launch s1_navigation terrain.launch.py follow_path:=true` enables the existing
-path controller for paths published to `/planned_path`. Do not also publish manual
-velocity commands in that mode. The old 30 m flat-ground mapper, random waypoint
-publisher, and planner are not launched: terrain-aware autonomous route planning
-is a separate feature. `simulation.launch.py` still runs the original flat course.
+`ros2 launch s1_navigation terrain.launch.py follow_path:=true` starts the terrain
+A* planner, path visualizer, and controller. A* uses the full 2000 m by 2000 m
+`/elevation_map`; its 2048 by 2048 cells come from Gazebo's 0.9765625 m heightmap.
+The `traversability_cost` layer supplies gradual costs, while cells at cost 1.0
+(30 degrees or steeper) are blocked. `/planned_path` appears as a blue Path in
+RViz and as a collision-free blue route in Gazebo. Do not also publish manual
+velocity commands in that mode. `simulation.launch.py` still runs the original
+flat course.
 
 Use `gui:=false sensors:=false` for a physics-only run without graphics. With sensors
 enabled, `/scan` contains the existing 720-ray lidar and `/model/robot/odometry`
@@ -132,3 +135,12 @@ and approximately 0.32–0.34 m body-center clearance above the measured surface
 A separate 100 m/s test stopped at an over-30-degree terrain face and remained at
 the same coordinates under repeated commands. The focused world, path-tracking,
 and launch regression suite also passes.
+
+
+### Partial path repair
+
+Obstacle-triggered A* requests first try reconnecting 20, 40, then 60 m along
+the existing path. Each search uses a bounded rectangle with 10, 20, then 30 m
+padding. The retained suffix must remain traversable; unsuccessful repairs fall
+back to full A*. The controller receives an empty path while a repair is computed.
+Ordinary motion and obstacle updates off the route no longer force full replans.

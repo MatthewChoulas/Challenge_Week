@@ -1,9 +1,10 @@
 """Regression tests for following a path after passing its early points."""
 from types import MethodType, SimpleNamespace
 
-import pytest
 from geometry_msgs.msg import PoseStamped
 from nav_msgs.msg import Path
+import numpy as np
+import pytest
 
 from s1_navigation.path_controller import PathController
 
@@ -64,3 +65,19 @@ def test_end_of_path_is_valid_target():
     node = controller([(0, 0), (1, 0)], x=1.1)
     assert node.select_target() == (1, 0)
     assert node.select_target() == (1, 0)
+
+
+def test_close_obstacle_ahead_blocks_motion():
+    node = SimpleNamespace(
+        robot_x=0.0, robot_y=0.0,
+        obstacle_stop_distance=3.0, corridor_half_width=1.0,
+        obstacle_points=np.array([[2.0, 0.5], [-1.0, 0.0]]))
+    assert PathController.obstacle_blocks_motion(node, 1.0, 0.0)
+
+
+def test_obstacle_to_side_does_not_prevent_detour_motion():
+    node = SimpleNamespace(
+        robot_x=0.0, robot_y=0.0,
+        obstacle_stop_distance=3.0, corridor_half_width=1.0,
+        obstacle_points=np.array([[2.0, 0.0]]))
+    assert not PathController.obstacle_blocks_motion(node, 0.0, 1.0)

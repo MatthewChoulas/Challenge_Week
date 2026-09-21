@@ -5,6 +5,7 @@
 #include <mutex>
 #include <limits>
 #include <string>
+#include <vector>
 
 #include <gz/common/Console.hh>
 #include <gz/common/Image.hh>
@@ -32,6 +33,9 @@ class TerrainDrive : public gz::sim::System,
     this->base = gz::sim::Link(this->model.LinkByName(_ecm, "base_link"));
     this->base.EnableVelocityChecks(_ecm);
     this->base.SetGravityEnabled(_ecm, false);
+    // TerrainDrive owns XY integration so it can keep the rover exactly on
+    // the heightmap. It therefore checks generated static base footprints
+    // before issuing pose commands instead of relying on physics contacts.
     this->model.SetCollisionEnabled(_ecm, false);
 
     this->terrainSize = _sdf->Get<double>("terrain_size", 2000.0).first;
@@ -39,6 +43,25 @@ class TerrainDrive : public gz::sim::System,
     this->zOffset = _sdf->Get<double>("terrain_z_offset", 0.0).first;
     const double slopeDegrees = _sdf->Get<double>("max_slope_deg", 30.0).first;
     this->minNormalZ = std::cos(slopeDegrees * kPi / 180.0);
+
+    for (auto dome = _sdf->FindElement("dome"); dome;
+         dome = dome->GetNextElement("dome"))
+    {
+      this->domes.push_back({
+          dome->Get<double>("x"),
+          dome->Get<double>("y"),
+          dome->Get<double>("radius")});
+    }
+    for (auto hallway = _sdf->FindElement("hallway"); hallway;
+         hallway = hallway->GetNextElement("hallway"))
+    {
+      this->hallways.push_back({
+          hallway->Get<double>("x"),
+          hallway->Get<double>("y"),
+          hallway->Get<double>("yaw"),
+          hallway->Get<double>("length"),
+          hallway->Get<double>("width")});
+    }
 
     const auto path = _sdf->Get<std::string>("heightmap_uri", "").first;
     if (path.empty() || this->heightmap.Load(path) != 0 ||
@@ -71,7 +94,8 @@ class TerrainDrive : public gz::sim::System,
     {
       const auto target = reset->Data();
       gz::math::Pose3d surface;
-      if (this->SurfacePose(target.X(), target.Y(), target.Rot().Yaw(), surface))
+      if (this->ObstacleFree(target.X(), target.Y()) &&
+          this->SurfacePose(target.X(), target.Y(), target.Rot().Yaw(), surface))
         this->model.SetWorldPoseCmd(_ecm, surface);
       this->base.SetLinearVelocity(_ecm, gz::math::Vector3d::Zero);
       this->base.SetAngularVelocity(_ecm, gz::math::Vector3d::Zero);
@@ -103,14 +127,12 @@ class TerrainDrive : public gz::sim::System,
     // narrow impassable section during a delayed simulation update.
     const double travel = std::hypot(worldVx, worldVy) * dt;
     const int steps = std::max(1, static_cast<int>(std::ceil(travel / 0.20)));
-    bool blocked = false;
     for (int step = 0; step < steps; ++step)
     {
       const double nextX = x + worldVx * dt / steps;
       const double nextY = y + worldVy * dt / steps;
       if (!this->Traversable(nextX, nextY, yaw))
       {
-        blocked = true;
         break;
       }
       x = nextX;
@@ -121,10 +143,11 @@ class TerrainDrive : public gz::sim::System,
     if (!this->SurfacePose(x, y, yaw, pose))
       return;
     this->model.SetWorldPoseCmd(_ecm, pose);
-    this->base.SetLinearVelocity(
-        _ecm, blocked ? gz::math::Vector3d::Zero :
-        gz::math::Vector3d(vx, vy, 0.0));
-    this->base.SetAngularVelocity(_ecm, gz::math::Vector3d(0.0, 0.0, turn));
+    // Motion has already been integrated into the surface pose above. A
+    // second physics velocity command would move it away from that surface
+    // (and used to integrate XY movement twice).
+    this->base.SetLinearVelocity(_ecm, gz::math::Vector3d::Zero);
+    this->base.SetAngularVelocity(_ecm, gz::math::Vector3d::Zero);
   }
 
   private: double Height(double _x, double _y) const
@@ -143,10 +166,15 @@ class TerrainDrive : public gz::sim::System,
     const auto y1 = std::min(y0 + 1, this->heightmap.Height() - 1);
     const double tx = px - x0;
     const double ty = py - y0;
-    const double top = (1.0 - tx) * this->heightmap.Pixel(x0, y0).R() +
-                       tx * this->heightmap.Pixel(x1, y0).R();
-    const double bottom = (1.0 - tx) * this->heightmap.Pixel(x0, y1).R() +
-                          tx * this->heightmap.Pixel(x1, y1).R();
+    // Image::Pixel uses FreeImage's bottom-up scanlines, whereas py is a
+    // north-to-south PNG row. Convert here exactly once. Without this the
+    // rover follows the height at the mirrored north/south location.
+    const auto pixelY0 = this->heightmap.Height() - 1 - y0;
+    const auto pixelY1 = this->heightmap.Height() - 1 - y1;
+    const double top = (1.0 - tx) * this->heightmap.Pixel(x0, pixelY0).R() +
+                       tx * this->heightmap.Pixel(x1, pixelY0).R();
+    const double bottom = (1.0 - tx) * this->heightmap.Pixel(x0, pixelY1).R() +
+                          tx * this->heightmap.Pixel(x1, pixelY1).R();
     return this->zOffset + this->heightRange *
         ((1.0 - ty) * top + ty * bottom);
   }
@@ -171,6 +199,8 @@ class TerrainDrive : public gz::sim::System,
 
   private: bool Traversable(double _x, double _y, double _yaw) const
   {
+    if (!this->ObstacleFree(_x, _y))
+      return false;
     const double c = std::cos(_yaw);
     const double s = std::sin(_yaw);
     for (const auto &wheel : kWheelOffsets)
@@ -181,6 +211,31 @@ class TerrainDrive : public gz::sim::System,
       const double wy = _y + s * wheel[0] + c * wheel[1];
       if (!this->HeightAndNormal(wx, wy, height, normal) ||
           normal.Z() < this->minNormalZ)
+        return false;
+    }
+    return true;
+  }
+
+  private: bool ObstacleFree(double _x, double _y) const
+  {
+    for (const auto &dome : this->domes)
+    {
+      if (std::hypot(_x - dome.x, _y - dome.y) <
+          dome.radius + kRobotFootprintRadius)
+        return false;
+    }
+    for (const auto &hallway : this->hallways)
+    {
+      const double c = std::cos(hallway.yaw);
+      const double s = std::sin(hallway.yaw);
+      const double localX = c * (_x - hallway.x) + s * (_y - hallway.y);
+      const double localY = -s * (_x - hallway.x) + c * (_y - hallway.y);
+      const double nearestX = std::clamp(localX, -hallway.length * 0.5,
+                                         hallway.length * 0.5);
+      const double nearestY = std::clamp(localY, -hallway.width * 0.5,
+                                         hallway.width * 0.5);
+      if (std::hypot(localX - nearestX, localY - nearestY) <
+          kRobotFootprintRadius)
         return false;
     }
     return true;
@@ -252,11 +307,24 @@ class TerrainDrive : public gz::sim::System,
   private: double vx{0.0}, vy{0.0}, wz{0.0};
   private: std::chrono::steady_clock::time_point lastCommand{};
 
+  private: struct Dome
+  {
+    double x, y, radius;
+  };
+  private: struct Hallway
+  {
+    double x, y, yaw, length, width;
+  };
+  private: std::vector<Dome> domes;
+  private: std::vector<Hallway> hallways;
+
   private: static constexpr double kPi{3.14159265358979323846};
   private: static constexpr double kMaxLinearSpeed{100.0};
   private: static constexpr double kMaxTurnRate{0.6};
   private: static constexpr double kWheelRadius{0.15};
   private: static constexpr double kWheelCenterDepth{0.17};
+  // The 1 x 1 m rover body is conservatively represented by its half diagonal.
+  private: static constexpr double kRobotFootprintRadius{0.7071067811865476};
   private: static constexpr std::array<std::array<double, 2>, 4> kWheelOffsets{{
       {{0.38, 0.38}}, {{0.38, -0.38}},
       {{-0.38, 0.38}}, {{-0.38, -0.38}}

@@ -9,6 +9,7 @@
 
   <depend>rclpy</depend>
   <depend>sensor_msgs</depend>
+  <depend>sensor_msgs_py</depend>
   <depend>std_msgs</depend>
   <depend>grid_map_msgs</depend>
   <exec_depend>grid_map_rviz_plugin</exec_depend>

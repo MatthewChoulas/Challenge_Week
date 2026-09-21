@@ -52,6 +52,8 @@ setup(
             'waypoint_publisher = s1_navigation.waypoint_publisher:main',
             'astar_planner = s1_navigation.astar_planner:main',
             'path_controller = s1_navigation.path_controller:main',
+            'local_planner = s1_navigation.local_planner:main',
+            'path_visualizer = s1_navigation.path_visualizer:main',
             'gps_start_publisher = s1_navigation.gps_start_publisher:main',
             'gps_odometry = s1_navigation.gps_odometry:main'
         ],

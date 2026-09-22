@@ -4,23 +4,31 @@ import heapq
 import math
 import time
 
-from geometry_msgs.msg import PoseArray, PoseStamped
+from geometry_msgs.msg import Pose, PoseStamped
 from grid_map_msgs.msg import GridMap
 from nav_msgs.msg import OccupancyGrid, Odometry, Path
 import numpy as np
 import rclpy
 from rclpy.node import Node
 from rclpy.qos import DurabilityPolicy, QoSProfile, ReliabilityPolicy
-from std_msgs.msg import Empty
+from std_msgs.msg import Empty, Float64MultiArray, Int32MultiArray
 
 
 REPLAN_FREQ = 1.0
+GLOBAL_REPLAN_PERIOD = 10.0
 # A* targets a terrain-cell centre; accept a waypoint once the rover is within
 # 2 m so it can progress reliably despite grid and odometry quantization.
 GOAL_TOLERANCE = 2.0
 MAX_TRAVERSABILITY_COST = 1.0
 TERRAIN_COST_WEIGHT = 3.0
 OBSTACLE_COST_WEIGHT = 8.0
+
+NAV_IDLE = 0
+NAV_PLANNING = 1
+NAV_FOLLOWING = 2
+NAV_REPLANNING = 3
+NAV_GOAL_REACHED = 4
+NAV_GOAL_UNREACHABLE = 5
 
 
 def unpack_grid_map_layer(message, layer_name):
@@ -58,12 +66,13 @@ class AStarPlanner(Node):
         self.have_odom = False
         self.robot_x = 0.0
         self.robot_y = 0.0
-        self.waypoints = []
-        self.have_waypoints = False
-        self.current_waypoint_index = 0
+        self.goal = None
+        self.goal_index = -1
+        self.goal_tolerance = GOAL_TOLERANCE
         self.last_plan_position = None
         self.last_planned_goal_index = None
         self.replan_requested = False
+        self.full_replan_requested = False
         self.active_path = []
 
         qos = QoSProfile(
@@ -74,8 +83,9 @@ class AStarPlanner(Node):
             GridMap, '/elevation_map', self.grid_map_callback, qos)
         self.odom_subscriber = self.create_subscription(
             Odometry, '/model/robot/odometry', self.odom_callback, 10)
-        self.waypoint_subscriber = self.create_subscription(
-            PoseArray, '/waypoints', self.waypoint_callback, qos)
+        self.goal_command_subscriber = self.create_subscription(
+            Float64MultiArray, '/navigation_goal',
+            self.goal_command_callback, qos)
         self.obstacle_subscriber = self.create_subscription(
             OccupancyGrid, '/global_occupancy_map',
             self.obstacle_map_callback, qos)
@@ -84,8 +94,12 @@ class AStarPlanner(Node):
         self.path_publisher = self.create_publisher(Path, '/planned_path', 10)
         self.goal_publisher = self.create_publisher(
             PoseStamped, '/current_goal', 10)
+        self.navigation_event_publisher = self.create_publisher(
+            Int32MultiArray, '/navigation_event', 10)
         self.planning_timer = self.create_timer(
             1.0 / REPLAN_FREQ, self.planning_callback)
+        self.global_replan_timer = self.create_timer(
+            GLOBAL_REPLAN_PERIOD, self.request_global_replan)
         self.get_logger().info(
             'A* planner waiting for /elevation_map traversability_cost')
 
@@ -159,21 +173,67 @@ class AStarPlanner(Node):
         self.obstacle_cost = np.maximum(aligned, 0).astype(np.float32) / 100.0
 
     def replan_callback(self, _message):
+        if self.goal is None:
+            return
         self.replan_requested = True
+        self.publish_navigation_event(NAV_REPLANNING)
+
+    def request_global_replan(self):
+        """Request a fresh start-to-goal A* plan every ten seconds."""
+        if self.active_path and self.goal is not None:
+            self.full_replan_requested = True
+            self.publish_navigation_event(NAV_REPLANNING)
 
     def odom_callback(self, message):
         self.have_odom = True
         self.robot_x = message.pose.pose.position.x
         self.robot_y = message.pose.pose.position.y
 
-    def waypoint_callback(self, message):
-        if self.have_waypoints:
+    def goal_command_callback(self, message):
+        """Accept the single indexed goal selected by the mission manager."""
+        if len(message.data) == 1 and int(message.data[0]) < 0:
+            self.clear_goal()
             return
-        self.waypoints = list(message.poses)
-        self.current_waypoint_index = 0
-        self.have_waypoints = True
+        if len(message.data) != 4:
+            self.get_logger().warning(
+                'Ignoring malformed /navigation_goal; expected index,x,y,tolerance')
+            return
+        index, x, y, tolerance = message.data
+        if (not all(math.isfinite(value) for value in message.data) or
+                index < 0 or tolerance <= 0):
+            self.get_logger().warning('Ignoring invalid /navigation_goal')
+            return
+        self.goal = Pose()
+        self.goal.position.x = x
+        self.goal.position.y = y
+        self.goal.orientation.w = 1.0
+        self.goal_index = int(index)
+        self.goal_tolerance = tolerance
         self.last_planned_goal_index = None
-        self.get_logger().info(f'Received {len(self.waypoints)} waypoints')
+        self.last_plan_position = None
+        self.replan_requested = False
+        self.full_replan_requested = False
+        self.publish_path([])
+        self.publish_navigation_event(NAV_PLANNING)
+        self.get_logger().info(
+            f'Received commanded goal {self.goal_index + 1} at '
+            f'({x:.2f}, {y:.2f}), tolerance {tolerance:.2f} m')
+
+    def clear_goal(self):
+        """Clear execution state and wait for another manager command."""
+        self.goal = None
+        self.goal_index = -1
+        self.last_plan_position = None
+        self.last_planned_goal_index = None
+        self.replan_requested = False
+        self.full_replan_requested = False
+        self.publish_path([])
+
+    def publish_navigation_event(self, event):
+        """Report an event with the commanded index for stale-event rejection."""
+        if self.goal_index >= 0:
+            self.navigation_event_publisher.publish(
+                Int32MultiArray(data=[event, self.goal_index]))
 
     def world_to_grid(self, x, y):
         return (int(math.floor((x - self.origin_x) / self.resolution)),
@@ -191,10 +251,7 @@ class AStarPlanner(Node):
                 and self.origin_y <= y < self.origin_y + self.height * self.resolution)
 
     def current_goal(self):
-        if (not self.have_waypoints or
-                self.current_waypoint_index >= len(self.waypoints)):
-            return None
-        return self.waypoints[self.current_waypoint_index]
+        return self.goal
 
     def distance_to_goal(self, goal):
         return math.hypot(
@@ -235,14 +292,14 @@ class AStarPlanner(Node):
         return True
 
     def repair_path(self, start, nearest):
-        """Try 20, 40, then 60 m rejoin distances with bounded search windows."""
+        """Try 50, 75, then 100 m rejoin distances with bounded searches."""
         remaining = self.active_path[nearest:]
         distances = [0.0]
         for first, second in zip(remaining, remaining[1:]):
             distances.append(distances[-1] + self.resolution * math.hypot(
                 second[0] - first[0], second[1] - first[1]))
         tried = set()
-        for distance, margin in ((20.0, 10.0), (40.0, 20.0), (60.0, 30.0)):
+        for distance, margin in ((50.0, 25.0), (75.0, 37.5), (100.0, 50.0)):
             index = next((i for i, value in enumerate(distances)
                           if value >= distance), len(remaining) - 1)
             if index in tried:
@@ -359,46 +416,29 @@ class AStarPlanner(Node):
         self.path_publisher.publish(message)
 
     def skip_current_goal(self, reason):
-        """Report an unreachable goal, stop its path, and advance once."""
-        goal_number = self.current_waypoint_index + 1
+        """Report an unreachable goal and wait for the manager's next goal."""
+        goal_number = self.goal_index + 1
         goal = self.current_goal()
         if goal is not None:
             self.get_logger().warning(
                 f'Skipping waypoint {goal_number} at '
                 f'({goal.position.x:.2f}, {goal.position.y:.2f}): {reason}')
-        self.publish_path([])
-        self.current_waypoint_index += 1
-        self.last_plan_position = None
-        self.last_planned_goal_index = None
-        if self.current_goal() is None:
-            self.get_logger().info('No more reachable waypoint goals')
+            self.publish_navigation_event(NAV_GOAL_UNREACHABLE)
+        self.clear_goal()
 
     def planning_callback(self):
-        if self.terrain_cost is None or not self.have_odom or not self.have_waypoints:
+        if self.terrain_cost is None or not self.have_odom or self.goal is None:
             return
         goal = self.current_goal()
-        if goal is None:
-            self.publish_path([])
-            return
-        if self.distance_to_goal(goal) <= GOAL_TOLERANCE:
-            reached_index = self.current_waypoint_index
+        if self.distance_to_goal(goal) <= self.goal_tolerance:
+            reached_index = self.goal_index
             reached_distance = self.distance_to_goal(goal)
-            self.current_waypoint_index += 1
-            self.last_planned_goal_index = None
-            if self.current_waypoint_index < len(self.waypoints):
-                self.get_logger().info(
-                    f'Reached waypoint {reached_index + 1} '
-                    f'({reached_distance:.3f} m away); advancing to '
-                    f'waypoint {self.current_waypoint_index + 1}')
-            else:
-                self.get_logger().info(
-                    f'Reached final waypoint {reached_index + 1} '
-                    f'({reached_distance:.3f} m away)')
-            goal = self.current_goal()
-            if goal is None:
-                self.get_logger().info('All waypoints reached!')
-                self.publish_path([])
-                return
+            self.get_logger().info(
+                f'Reached commanded waypoint {reached_index + 1} '
+                f'({reached_distance:.3f} m away)')
+            self.publish_navigation_event(NAV_GOAL_REACHED)
+            self.clear_goal()
+            return
         if not self.in_world_bounds(self.robot_x, self.robot_y):
             self.publish_path([])
             return
@@ -406,30 +446,35 @@ class AStarPlanner(Node):
             self.skip_current_goal('goal is outside the terrain map')
             return
 
-        new_goal = self.last_planned_goal_index != self.current_waypoint_index
+        new_goal = self.last_planned_goal_index != self.goal_index
         start = self.world_to_grid(self.robot_x, self.robot_y)
         target = self.world_to_grid(goal.position.x, goal.position.y)
         grid_path = None
         if self.active_path and not new_goal and self.last_plan_position is not None:
             nearest = self.remaining_path_index(start)
             blocked = not self.path_section_clear(self.active_path[nearest:])
-            if not blocked and not self.replan_requested:
+            if (not blocked and not self.replan_requested and
+                    not self.full_replan_requested):
                 return
-            # Clear the controller's path while the synchronous search runs.
-            saved_path = self.active_path
-            self.publish_path([])
-            self.active_path = saved_path
-            partial_start = time.perf_counter()
-            grid_path = self.repair_path(start, nearest)
-            partial_seconds = time.perf_counter() - partial_start
-            if grid_path:
-                self.get_logger().info(
-                    f'Partial A* replanning time: {partial_seconds:.6f} s '
-                    f'(success, {len(grid_path)} combined poses)')
+            self.publish_navigation_event(NAV_REPLANNING)
+            if self.full_replan_requested:
+                self.get_logger().info('Starting scheduled full A* replan')
             else:
-                self.get_logger().info(
-                    f'Partial A* replanning time: {partial_seconds:.6f} s '
-                    '(failed; trying full A* replan)')
+                # Clear the controller's path while an obstacle repair runs.
+                saved_path = self.active_path
+                self.publish_path([])
+                self.active_path = saved_path
+                partial_start = time.perf_counter()
+                grid_path = self.repair_path(start, nearest)
+                partial_seconds = time.perf_counter() - partial_start
+                if grid_path:
+                    self.get_logger().info(
+                        f'Partial A* replanning time: {partial_seconds:.6f} s '
+                        f'(success, {len(grid_path)} combined poses)')
+                else:
+                    self.get_logger().info(
+                        f'Partial A* replanning time: {partial_seconds:.6f} s '
+                        '(failed; trying full A* replan)')
 
         self.publish_current_goal(goal)
         if grid_path is None:
@@ -443,13 +488,15 @@ class AStarPlanner(Node):
             self.get_logger().info(
                 f'{plan_kind}: {full_plan_seconds:.6f} s ({result})')
         self.last_plan_position = (self.robot_x, self.robot_y)
-        self.last_planned_goal_index = self.current_waypoint_index
+        self.last_planned_goal_index = self.goal_index
         self.replan_requested = False
+        self.full_replan_requested = False
         if grid_path is None:
             self.skip_current_goal('no traversable terrain path exists')
             return
         self.get_logger().info(f'Published global path with {len(grid_path)} poses')
         self.publish_path(grid_path)
+        self.publish_navigation_event(NAV_FOLLOWING)
 
 
 def main(args=None):

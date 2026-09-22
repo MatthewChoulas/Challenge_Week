@@ -95,29 +95,55 @@ def test_uses_actual_map_dimensions():
 
 def test_unreachable_goal_is_reported_cleared_and_skipped():
     messages = []
+    events = []
     logger = SimpleNamespace(
         warning=lambda message: messages.append(('warning', message)),
         info=lambda message: messages.append(('info', message)))
-    goals = [SimpleNamespace(position=SimpleNamespace(x=4.0, y=5.0)),
-             SimpleNamespace(position=SimpleNamespace(x=8.0, y=9.0))]
+    goal = SimpleNamespace(position=SimpleNamespace(x=4.0, y=5.0))
     node = SimpleNamespace(
-        waypoints=goals, have_waypoints=True, current_waypoint_index=0,
+        goal=goal, goal_index=0,
         last_plan_position=(1.0, 2.0), last_planned_goal_index=0,
-        published_paths=[], get_logger=lambda: logger)
+        replan_requested=False, full_replan_requested=False,
+        published_paths=[], get_logger=lambda: logger,
+        navigation_event_publisher=SimpleNamespace(
+            publish=lambda message: events.append(list(message.data))))
     node.current_goal = MethodType(AStarPlanner.current_goal, node)
     node.publish_path = lambda path: node.published_paths.append(path)
+    node.publish_navigation_event = MethodType(
+        AStarPlanner.publish_navigation_event, node)
+    node.clear_goal = MethodType(AStarPlanner.clear_goal, node)
     node.skip_current_goal = MethodType(AStarPlanner.skip_current_goal, node)
 
     node.skip_current_goal('no traversable terrain path exists')
 
-    assert node.current_waypoint_index == 1
-    assert node.current_goal() is goals[1]
+    assert node.goal_index == -1
+    assert node.current_goal() is None
     assert node.published_paths == [[]]
     assert node.last_plan_position is None
     assert node.last_planned_goal_index is None
+    assert events == [[5, 0]]
     assert messages == [('warning',
                          'Skipping waypoint 1 at (4.00, 5.00): '
                          'no traversable terrain path exists')]
+
+
+def test_periodic_global_replan_only_requests_with_an_active_path():
+    events = []
+    node = SimpleNamespace(
+        active_path=[(0, 0), (1, 0)], full_replan_requested=False,
+        goal=object(), goal_index=2,
+        navigation_event_publisher=SimpleNamespace(
+            publish=lambda message: events.append(list(message.data))))
+    node.publish_navigation_event = MethodType(
+        AStarPlanner.publish_navigation_event, node)
+    AStarPlanner.request_global_replan(node)
+    assert node.full_replan_requested
+    assert events == [[3, 2]]
+
+    node.active_path = []
+    node.full_replan_requested = False
+    AStarPlanner.request_global_replan(node)
+    assert not node.full_replan_requested
 
 
 def test_bounded_search_cannot_escape_window():
@@ -135,7 +161,7 @@ def test_partial_repair_avoids_obstacle_and_preserves_suffix():
     repaired = node.repair_path((5, 50), 0)
     assert repaired
     assert repaired[0] == (5, 50)
-    assert repaired[-69:] == node.active_path[-69:]
+    assert repaired[-39:] == node.active_path[-39:]
     assert node.path_section_clear(repaired)
     assert any(y != 50 for _, y in repaired)
 
@@ -150,8 +176,8 @@ def test_failed_repairs_return_none_for_global_fallback():
 def test_repair_expands_past_blocked_first_rejoin():
     node = planner(width=100, origin=0.0)
     node.active_path = [(x, 50) for x in range(5, 95)]
-    node.terrain_cost[50, 25] = 1.0
+    node.terrain_cost[50, 55] = 1.0
     repaired = node.repair_path((5, 50), 0)
     assert repaired
     assert node.path_section_clear(repaired)
-    assert repaired[-49:] == node.active_path[-49:]
+    assert repaired[-14:] == node.active_path[-14:]

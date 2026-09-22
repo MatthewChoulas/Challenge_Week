@@ -6,19 +6,26 @@ import numpy as np
 import rclpy
 from rclpy.node import Node
 from rclpy.qos import DurabilityPolicy, QoSProfile, ReliabilityPolicy
-from std_msgs.msg import Empty
+from std_msgs.msg import Bool, Empty
 
 
 CONTROL_FREQ = 20.0
 
-VELOCITY_KP = 6.0
+VELOCITY_KP = 8.0
+HEADING_KP = 2.0
+MAX_ANGULAR_SPEED = 0.6
 
 LOOKAHEAD_DISTANCE = 0.40
 
 PATH_END_TOLERANCE = 0.1
-OBSTACLE_STOP_DISTANCE = 3.0
+OBSTACLE_STOP_DISTANCE = 5.0
 ROVER_CORRIDOR_HALF_WIDTH = 1.0
 REPLAN_REQUEST_PERIOD = 1.0
+
+
+def wrap_angle(angle):
+    """Wrap an angle to the shortest signed rotation in [-pi, pi]."""
+    return math.atan2(math.sin(angle), math.cos(angle))
 
 
 class PathController(Node):
@@ -29,6 +36,7 @@ class PathController(Node):
         self.path = []
         self.path_progress = 0.0
         self.have_odom = False
+        self.motion_enabled = True
         self.max_speed = self.declare_parameter('max_speed', 100.0).value
         self.obstacle_stop_distance = float(self.declare_parameter(
             'obstacle_stop_distance', OBSTACLE_STOP_DISTANCE).value)
@@ -75,6 +83,8 @@ class PathController(Node):
             '/replan_path',
             10
         )
+        self.motion_subscription = self.create_subscription(
+            Bool, '/mission_motion_enabled', self.motion_callback, retained)
 
         self.control_timer = self.create_timer(
             1.0 / CONTROL_FREQ,
@@ -87,6 +97,11 @@ class PathController(Node):
         self.path = list(msg.poses)
         # A replanned path has different segment indices. Reproject onto it.
         self.path_progress = 0.0
+
+    def motion_callback(self, msg):
+        self.motion_enabled = bool(msg.data)
+        if not self.motion_enabled:
+            self.stop_robot()
 
     def odom_callback(self, msg):
         self.have_odom = True
@@ -196,7 +211,8 @@ class PathController(Node):
         return points[-1]
 
     def control_callback(self):
-        if not self.have_odom or len(self.path) == 0:
+        if (not self.motion_enabled or not self.have_odom or
+                len(self.path) == 0):
             self.stop_robot()
             return
 
@@ -230,6 +246,8 @@ class PathController(Node):
             return
 
         speed = min(VELOCITY_KP * distance, self.max_speed)
+        desired_yaw = math.atan2(dy_odom, dx_odom)
+        heading_error = wrap_angle(desired_yaw - self.robot_yaw)
 
         if self.obstacle_blocks_motion(dx_odom, dy_odom):
             self.stop_robot()
@@ -240,7 +258,9 @@ class PathController(Node):
 
         cmd.linear.x = speed * (dx_robot / distance)
         cmd.linear.y = speed * (dy_robot / distance)
-        cmd.angular.z = 0.0
+        cmd.angular.z = max(
+            -MAX_ANGULAR_SPEED,
+            min(MAX_ANGULAR_SPEED, HEADING_KP * heading_error))
 
         self.cmd_vel_publisher.publish(cmd)
 

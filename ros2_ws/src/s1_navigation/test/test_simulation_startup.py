@@ -1,4 +1,5 @@
 """Regression coverage for concurrent simulation startup."""
+import math
 from types import SimpleNamespace
 from unittest.mock import Mock
 
@@ -19,7 +20,7 @@ def test_mapper_waits_for_odometry_and_cloud():
 
 def test_planner_waits_for_odometry():
     planner = SimpleNamespace(
-        terrain_cost=object(), have_odom=False, have_waypoints=False)
+        terrain_cost=object(), have_odom=False, goal=None)
     AStarPlanner.planning_callback(planner)
 
 
@@ -28,7 +29,8 @@ def controller(have_odom=True):
     goal.pose.position.x = 10.0
     return SimpleNamespace(
         have_odom=have_odom, path=[goal], robot_x=0.0, robot_y=0.0,
-        robot_yaw=0.0, max_speed=0.5, stop_robot=Mock(),
+        robot_yaw=0.0, max_speed=0.5, motion_enabled=True,
+        stop_robot=Mock(),
         select_target=Mock(return_value=(10.0, 10.0)),
         obstacle_blocks_motion=Mock(return_value=False),
         request_replan=Mock(),
@@ -48,6 +50,22 @@ def test_controller_caps_total_speed():
     PathController.control_callback(node)
     cmd = node.cmd_vel_publisher.publish.call_args.args[0]
     assert (cmd.linear.x ** 2 + cmd.linear.y ** 2) ** 0.5 == pytest.approx(0.5)
+
+
+def test_controller_turns_heading_toward_path():
+    node = controller()
+    PathController.control_callback(node)
+    cmd = node.cmd_vel_publisher.publish.call_args.args[0]
+    assert cmd.angular.z == pytest.approx(0.6)
+
+
+def test_controller_uses_shortest_heading_rotation():
+    node = controller()
+    node.robot_yaw = math.radians(170.0)
+    node.select_target.return_value = (-10.0, -1.0)
+    PathController.control_callback(node)
+    cmd = node.cmd_vel_publisher.publish.call_args.args[0]
+    assert cmd.angular.z > 0.0
 
 
 def test_controller_handles_target_at_robot():

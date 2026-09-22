@@ -1,24 +1,27 @@
 # Terrain GPS waypoints
 
-The terrain launch starts two simple nodes. The original flat-world
+The terrain launch starts `gps_waypoint_converter`; the GUI mission manager
+normally publishes its GPS input. The standalone `gps_waypoint_publisher` can
+still generate a three-goal test mission. The original flat-world
 `waypoint_publisher.py` remains in use by `simulation.launch.py`.
 
 - `gps_waypoint_publisher` samples three points in the local square
   `[-1000, 1000] × [-1000, 1000]` metres. It rejects points too close to the
   fixed GPS origin or another goal. Defaults are 200 metres for both distances.
-  It uses WGS84 `Geod.fwd(origin_lon, origin_lat, bearing, distance)` to turn
-  the points into GPS coordinates. Bearing is `atan2(east, north)` in degrees.
-- `/gps_waypoints` is `std_msgs/Float64MultiArray`: exactly six values
-  `[lat1, lon1, lat2, lon2, lat3, lon3]`, in degrees. Its layout labels identify
-  the three rows and latitude/longitude columns. The same list is repeated;
-  waypoints are generated only once per launch.
-- `gps_waypoint_converter` subscribes to that list. `Geod.inv` gives bearing
-  and distance from the fixed GPS origin. Local `x = distance*sin(bearing)`
-  and `y = distance*cos(bearing)`, matching the GPS robot reset. It samples
+  It adds each local point to the origin's NAD83 / UTM Zone 12N
+  (`EPSG:26912`) coordinate and transforms the result to WGS 84 latitude and
+  longitude.
+- `/gps_waypoints` is `std_msgs/Float64MultiArray` containing one or more
+  `[latitude, longitude]` pairs in degrees. The standalone publisher emits
+  three pairs and repeats the same generated list.
+- `gps_waypoint_converter` subscribes to that list. It projects each WGS 84
+  coordinate to EPSG:26912, then subtracts the projected origin. The resulting
+  local `x` is grid easting and `y` is grid northing, matching the GPS robot
+  reset and terrain grid. It samples
   the visual terrain heightmap for `z` and publishes `/waypoints` (`geometry_msgs/PoseArray`,
   frame `odom`) and `/waypoint_markers` (`visualization_msgs/MarkerArray`).
 - The converter calls Gazebo's bridged `/world/usgs_utah/create` service to
-  create three static green posts named `gps_waypoint_1` through `3`. Each
+  create one static green post per goal, named `gps_waypoint_1`, and so on. Each
   post is 2 m wide, with its bottom at world Z=0. The visual terrain heightmap
   is sampled at each waypoint: cylinder length is `terrain_z + 20` and centre
   Z is `(terrain_z + 20) / 2`. Thus each top is 20 m above the sampled terrain.
@@ -44,8 +47,8 @@ with an explanatory error. There is no obstacle, slope, or reachability filter.
 
 The exclusion centre is the fixed origin
 `38.42287240335025, -110.78495572815902`, not a later GPS teleport position.
-The local square uses the same geodesic coordinate convention as the rover;
-its east/north axes differ slightly from the source DEM's UTM grid axes.
+The local square uses the same UTM coordinate convention as the rover and the
+source DEM, so their east/north axes coincide.
 Changing the GPS topic after the first list is accepted does not replace goals;
 restart the terrain launch to generate and display a new set.
 

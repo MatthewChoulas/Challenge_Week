@@ -5,10 +5,12 @@ import math
 
 import rclpy
 from nav_msgs.msg import Odometry
-from pyproj import Geod
 from rclpy.node import Node
 from ros_gz_interfaces.srv import SetEntityPose
 from sensor_msgs.msg import NavSatFix
+from std_msgs.msg import Empty
+
+from .utm_conversion import latlon_to_local
 
 
 class GpsOdometry(Node):
@@ -29,7 +31,6 @@ class GpsOdometry(Node):
         self.world_name = self.declare_parameter('world_name', 'usgs_utah').value
         self.robot_name = self.declare_parameter('robot_name', 'robot').value
 
-        self.geod = Geod(ellps='WGS84')
         self.raw_odometry = None
         self.pending_position = None
         self.pose_future = None
@@ -37,6 +38,8 @@ class GpsOdometry(Node):
 
         self.gps_subscription = self.create_subscription(
             NavSatFix, '/robot_gps_start_location', self.gps_callback, 10)
+        self.origin_reset_subscription = self.create_subscription(
+            Empty, '/reset_rover_to_origin', self.origin_reset_callback, 10)
         self.raw_subscription = self.create_subscription(
             Odometry, self.raw_topic, self.raw_odom_callback, 10)
         self.publisher = self.create_publisher(Odometry, self.output_topic, 10)
@@ -67,18 +70,23 @@ class GpsOdometry(Node):
             return
         self.last_gps = gps_fix
 
-        azimuth, _, distance = self.geod.inv(
-            self.origin_longitude, self.origin_latitude,
-            message.longitude, message.latitude)
-        azimuth_rad = math.radians(azimuth)
+        east, north = latlon_to_local(
+            message.latitude, message.longitude,
+            self.origin_latitude, self.origin_longitude)
         gps_local = (
-            distance * math.sin(azimuth_rad),
-            distance * math.cos(azimuth_rad),
+            east,
+            north,
             message.altitude - self.origin_altitude,
         )
 
         # Keep the newest target queued until the simulator is ready.
         self.pending_position = gps_local
+
+    def origin_reset_callback(self, _message):
+        """Queue an explicit origin reset even if the GPS fix is unchanged."""
+        self.pending_position = (0.0, 0.0, 0.0)
+        self.last_gps = (
+            self.origin_latitude, self.origin_longitude, self.origin_altitude)
 
     def reset_gazebo_pose(self):
         if self.pending_position is None or self.raw_odometry is None:

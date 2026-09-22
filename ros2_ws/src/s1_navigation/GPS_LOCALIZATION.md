@@ -50,22 +50,23 @@ tilt. GPS altitude does not override terrain height in this mode.
 
 ## Coordinate transformation
 
-The subscriber uses `pyproj.Geod(ellps="WGS84")` to calculate the shortest
-geodesic from the origin to each fix on the WGS 84 reference ellipsoid. The
-geodesic inverse calculation returns an initial azimuth and distance in metres:
+The subscriber uses `pyproj.Transformer` to project the WGS 84 origin and GPS
+fix into NAD83 / UTM Zone 12N (`EPSG:26912`). It then subtracts the projected
+origin from the projected fix:
 
 ```text
-(azimuth, distance) = WGS84_GEODESIC(origin, fix)
-east  = distance * sin(azimuth)
-north = distance * cos(azimuth)
+origin_easting, origin_northing = PROJECT_UTM(origin)
+fix_easting, fix_northing       = PROJECT_UTM(fix)
+x = fix_easting  - origin_easting
+y = fix_northing - origin_northing
 up    = fix_altitude - origin_altitude
 ```
 
-The azimuth is measured clockwise from north, so sine produces the east
-component and cosine produces the north component. Therefore, local `x` points
-east, local `y` points north, and local `z` is the ellipsoidal height difference
-from the origin. If the incoming fix equals the origin, the published local
-position is `(0, 0, 0)`.
+Therefore local `x` follows UTM grid east, local `y` follows UTM grid north,
+and local `z` is the ellipsoidal height difference from the origin. This is
+the same projected grid used by the USGS DEM, Gazebo terrain, waypoint
+converter, and GUI. If the incoming fix equals the origin, the local position
+is `(0, 0, 0)`.
 
 The conversion is a position reference, not a complete navigation filter. GPS
 noise, antenna offsets, heading, velocity estimation, and sensor fusion would

@@ -3,13 +3,14 @@ import math
 import random
 
 import rclpy
-from pyproj import Geod
 from rclpy.node import Node
 from rclpy.qos import QoSProfile, DurabilityPolicy
 from std_msgs.msg import Float64MultiArray, MultiArrayDimension
 
+from .utm_conversion import local_to_latlon
 
-def generate_waypoints(geod, latitude, longitude, minimum_start, minimum_pair, seed):
+
+def generate_waypoints(latitude, longitude, minimum_start, minimum_pair, seed):
     """Sample local metres, enforce spacing, then convert to GPS degrees."""
     if not all(math.isfinite(v) and v >= 0 for v in (minimum_start, minimum_pair)):
         raise ValueError('Minimum distances must be finite and nonnegative')
@@ -22,8 +23,7 @@ def generate_waypoints(geod, latitude, longitude, minimum_start, minimum_pair, s
             continue
         if any(math.hypot(x - px, y - py) < minimum_pair for px, py in local):
             continue
-        lon, lat, _ = geod.fwd(longitude, latitude,
-                               math.degrees(math.atan2(x, y)), math.hypot(x, y))
+        lat, lon = local_to_latlon(x, y, latitude, longitude)
         local.append((x, y))
         gps.append((lat, lon))
         if len(gps) == 3:
@@ -45,7 +45,7 @@ class GpsWaypointPublisher(Node):
         self.message.layout.dim = [
             MultiArrayDimension(label='waypoints', size=3, stride=6),
             MultiArrayDimension(label='latitude_longitude_degrees', size=2, stride=2)]
-        goals = generate_waypoints(Geod(ellps='WGS84'), lat, lon, start, pair, seed)
+        goals = generate_waypoints(lat, lon, start, pair, seed)
         self.message.data = [value for goal in goals for value in goal]
         for index, (lat, lon) in enumerate(goals):
             self.get_logger().info(f'Goal {index + 1}: latitude={lat:.10f}, longitude={lon:.10f}')

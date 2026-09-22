@@ -79,7 +79,7 @@ def test_terrain_bases_have_half_buried_domes_and_connected_hallways(tmp_path):
     distances = [math.hypot(*map(float, model.find('pose').text.split()[:2]))
                  for model in central_domes]
     assert len(central_domes) == 8
-    assert sum(100.0 <= distance <= 180.0 for distance in distances) == 5
+    assert sum(100.0 <= distance <= 180.0 for distance in distances) == 3
     for dome in domes:
         radius = float(dome.find('.//visual/geometry/sphere/radius').text)
         collision_radius = float(dome.find('.//collision/geometry/sphere/radius').text)

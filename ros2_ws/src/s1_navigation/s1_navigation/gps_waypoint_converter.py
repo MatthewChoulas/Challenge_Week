@@ -5,7 +5,6 @@ import xml.etree.ElementTree as ET
 
 from ament_index_python.packages import get_package_share_directory
 from PIL import Image
-from pyproj import Geod
 import rclpy
 from rclpy.node import Node
 from rclpy.qos import QoSProfile, DurabilityPolicy
@@ -13,6 +12,8 @@ from geometry_msgs.msg import Pose, PoseArray
 from std_msgs.msg import Float64MultiArray
 from visualization_msgs.msg import Marker, MarkerArray
 from ros_gz_interfaces.srv import SpawnEntity
+
+from .utm_conversion import latlon_to_local
 
 MARKER_CLEARANCE = 20.0
 
@@ -30,7 +31,6 @@ class GpsWaypointConverter(Node):
         super().__init__('gps_waypoint_converter')
         self.latitude = self.declare_parameter('origin_latitude', 38.42287240335025).value
         self.longitude = self.declare_parameter('origin_longitude', -110.78495572815902).value
-        self.geod = Geod(ellps='WGS84')
         worlds = Path(get_package_share_directory('s1_navigation')) / 'worlds'
         # Read the displayed terrain asset from the world so marker heights
         # follow its configured resolution, vertical scale and offset.
@@ -45,10 +45,15 @@ class GpsWaypointConverter(Node):
         qos = QoSProfile(depth=1, durability=DurabilityPolicy.TRANSIENT_LOCAL)
         self.subscription = self.create_subscription(
             Float64MultiArray, '/gps_waypoints', self.waypoint_callback, qos)
+        self.preview_subscription = self.create_subscription(
+            Float64MultiArray, '/gps_waypoint_previews',
+            self.preview_callback, qos)
         self.publisher = self.create_publisher(PoseArray, '/waypoints', qos)
         self.marker_publisher = self.create_publisher(MarkerArray, '/waypoint_markers', qos)
         self.spawn_client = self.create_client(SpawnEntity, '/world/usgs_utah/create')
         self.goals = None
+        self.last_waypoint_data = None
+        self.visualized_data = None
         self.pending = []
         self.spawn_future = None
         self.timer = self.create_timer(1.0, self.spawn_next_marker)
@@ -66,40 +71,73 @@ class GpsWaypointConverter(Node):
                  + (1-tx)*ty*pixel(0, 1) + tx*ty*pixel(1, 1))
         return self.z_offset + self.height_range * value
 
-    def waypoint_callback(self, message):
-        # One list per launch, matching the original planner's behaviour.
-        if self.goals is not None:
-            return
-        if len(message.data) != 6 or not all(math.isfinite(v) for v in message.data):
-            self.get_logger().error('Expected three latitude/longitude pairs')
-            return
+    def convert_message(self, message):
+        """Validate and convert a flat latitude/longitude array."""
+        if (not message.data or len(message.data) % 2 != 0 or
+                not all(math.isfinite(v) for v in message.data)):
+            self.get_logger().error(
+                'Expected one or more latitude/longitude pairs')
+            return None
         goals = []
         for lat, lon in zip(message.data[::2], message.data[1::2]):
             if not (-90 <= lat <= 90 and -180 <= lon <= 180):
-                return
-            azimuth, _, distance = self.geod.inv(self.longitude, self.latitude, lon, lat)
-            x = distance * math.sin(math.radians(azimuth))
-            y = distance * math.cos(math.radians(azimuth))
+                self.get_logger().error('Waypoint coordinate outside valid ranges')
+                return None
+            x, y = latlon_to_local(
+                lat, lon, self.latitude, self.longitude)
             if abs(x) > 1000 or abs(y) > 1000:
                 self.get_logger().error('Waypoint outside terrain square')
-                return
+                return None
             goals.append((x, y, self.terrain_height(x, y)))
+        return tuple(message.data), goals
+
+    def preview_callback(self, message):
+        """Display accepted GUI targets without activating navigation."""
+        converted = self.convert_message(message)
+        if converted is None:
+            return
+        data, goals = converted
+        if data == self.visualized_data:
+            return
+        self.publish_markers(data, goals)
+
+    def waypoint_callback(self, message):
+        """Convert the targets activated by the mission Start command."""
+        converted = self.convert_message(message)
+        if converted is None:
+            return
+        data, goals = converted
+        if data == self.last_waypoint_data:
+            return
+        self.last_waypoint_data = data
         self.goals = goals
         poses = PoseArray()
         poses.header.frame_id = 'odom'
         poses.header.stamp = self.get_clock().now().to_msg()
+        for index, (x, y, z) in enumerate(goals):
+            pose = Pose()
+            pose.position.x, pose.position.y, pose.position.z = x, y, z
+            pose.orientation.w = 1.0
+            poses.poses.append(pose)
+        self.publisher.publish(poses)
+        if data != self.visualized_data:
+            self.publish_markers(data, goals)
+        self.get_logger().info(
+            f'Published {len(goals)} local waypoints for navigation')
+
+    def publish_markers(self, data, goals):
+        """Publish RViz markers and queue their Gazebo marker models."""
         markers = MarkerArray()
+        header = PoseArray().header
+        header.frame_id = 'odom'
+        header.stamp = self.get_clock().now().to_msg()
         for index, (x, y, z) in enumerate(goals):
             height, center_z = marker_geometry(z)
             self.get_logger().info(
                 f'Waypoint {index + 1}: ground Z={z:.3f}, '
                 f'cylinder bottom=0, top={height:.3f} m (20 m clearance)')
-            pose = Pose()
-            pose.position.x, pose.position.y, pose.position.z = x, y, z
-            pose.orientation.w = 1.0
-            poses.poses.append(pose)
             marker = Marker()
-            marker.header = poses.header
+            marker.header = header
             marker.ns, marker.id = 'terrain_waypoints', index
             marker.type, marker.action = Marker.CYLINDER, Marker.ADD
             marker.pose.position.x, marker.pose.position.y = x, y
@@ -110,10 +148,11 @@ class GpsWaypointConverter(Node):
             marker.scale.z = height
             marker.color.g = marker.color.a = 1.0
             markers.markers.append(marker)
-        self.publisher.publish(poses)
         self.marker_publisher.publish(markers)
         self.pending = list(enumerate(goals))
-        self.get_logger().info('Published three local waypoints and RViz markers')
+        self.visualized_data = data
+        self.get_logger().info(
+            f'Displaying {len(goals)} waypoint markers in RViz and Gazebo')
 
     def spawn_next_marker(self):
         if not self.pending or self.spawn_future is not None:
